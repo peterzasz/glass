@@ -1,0 +1,13 @@
+# Compiled object files
+*.o
+
+# Executables
+*.out
+*.exe
+
+# Editor temporary files
+*~
+*.swp
+
+# VS Code settings
+.vscode/
