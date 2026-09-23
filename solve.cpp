@@ -27,10 +27,10 @@ bool Solver::item_in_node(const Node& node, int x, int y, const Item& it) const
 
 bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& defect) const
 {
-    return x <= defect.x + defect.w &&
-           y <= defect.y + defect.h &&
-           defect.x <= x + it.w &&
-           defect.y <= y + it.h;
+    return x < defect.x + defect.w &&
+           y < defect.y + defect.h &&
+           defect.x < x + it.w &&
+           defect.y < y + it.h;
 }
 
 bool Solver::x_cut_touches_defect(int x, const Defect& defect) const
@@ -116,6 +116,336 @@ bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item&
     return true;
 }
 
+bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at )
+{
+    Node node = _s.nodes[node_id];
+    
+    int x_from, y_from, x_to, y_to;
+
+    if(node.children.empty())
+    {
+        x_from = node.x;
+        x_to = node.x + node.w - it.w;
+        y_from = node.y;
+        y_to = node.y + node.h - it.h;
+    }
+    else
+    {
+        x_from = _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
+        x_to = node.x + node.w - it.w;
+        y_from = node.y;
+        y_to = node.y + node.h - it.h;
+    }
+
+    for(int x = x_from; x <= x_to; ++x)
+    {
+        for(int y = y_from; y <= y_to; ++y)
+        {
+            if(!((x > x_from && x - x_from < min_waste) ||
+                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
+                    (y > y_from && y - y_from < min_waste) ||
+                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste)))
+            {
+                if(can_cut(bin,node,x,y,it))
+                {
+                    if(x == x_from)
+                    {
+                        int nodes_size = _s.nodes.size();
+                        int children_size = _s.nodes[node_id].children.size();
+                        int current_node_id_at = node_id_at;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            x,
+                            node.y,
+                            it.w,
+                            node.h,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+
+                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(nodes_size);
+                            _s.nodes[node_id].children.resize(children_size);
+                            node_id_at = current_node_id_at;
+                        }
+                    }
+                    else
+                    {
+                        int nodes_size = _s.nodes.size();
+                        int children_size = _s.nodes[node_id].children.size();
+                        int current_node_id_at = node_id_at;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            x_from,
+                            node.y,
+                            x-x_from,
+                            node.h,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            x,
+                            node.y,
+                            it.w,
+                            node.h,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+
+                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(nodes_size);
+                            _s.nodes[node_id].children.resize(children_size);
+                            node_id_at = current_node_id_at;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+
+    if(can_cut(bin,node,node.x,node.y,it))
+    {
+        if(node.h-it.h >= min_waste)
+        {
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y,
+                node.w,
+                it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            node_id_at++;
+
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y+it.h,
+                node.w,
+                node.h-it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            node_id_at++;
+
+            return cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at);
+        }
+    }
+    else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
+    {
+        if(node.h-it.h >= min_waste)
+        {
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y,
+                node.w,
+                node.h-it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            node_id_at++;
+
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y+node.h-it.h,
+                node.w,
+                it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            node_id_at++;
+
+            return cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at);
+        }
+    }
+
+    return false;
+}
+
+bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+
+    int x_from, y_from, x_to, y_to;
+
+    if(node.children.empty())
+    {
+        x_from = node.x;
+        x_to = node.x + node.w - it.w;
+        y_from = node.y;
+        y_to = node.y + node.h - it.h;
+    }
+    else
+    {
+        x_from = node.x;
+        x_to = node.x + node.w - it.w;
+        y_from = _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
+        y_to = node.y + node.h - it.h;
+    }
+
+    for(int y = y_from; y <= y_to; ++y)
+    {
+        for(int x = x_from; x <= x_to; ++x)
+        {
+            if(!((x > x_from && x - x_from < min_waste) ||
+                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
+                    (y > y_from && y - y_from < min_waste) ||
+                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste)))
+            {
+                if(can_cut(bin,node,x,y,it))
+                {
+                    if(y == y_from)
+                    {
+                        int nodes_size = _s.nodes.size();
+                        int children_size = _s.nodes[node_id].children.size();
+                        int current_node_id_at = node_id_at;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            node.x,
+                            y,
+                            node.w,
+                            it.h,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+
+                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(nodes_size);
+                            _s.nodes[node_id].children.resize(children_size);
+                            node_id_at = current_node_id_at;
+                        }
+                    }
+                    else
+                    {
+                        int nodes_size = _s.nodes.size();
+                        int children_size = _s.nodes[node_id].children.size();
+                        int current_node_id_at = node_id_at;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            node.x,
+                            y_from,
+                            node.w,
+                            y-y_from,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes.push_back(Node{
+                            node.plate_id,
+                            node_id_at,
+                            node.x,
+                            y,
+                            node.w,
+                            it.h,
+                            -2,
+                            node.cut + 1,
+                            node.node_id
+                        });
+
+                        _s.nodes[node_id].children.push_back(node_id_at);
+
+                        node_id_at++;
+                        
+                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(nodes_size);
+                            _s.nodes[node_id].children.resize(children_size);
+                            node_id_at = current_node_id_at;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
 {
     Node node = _s.nodes[node_id];
@@ -175,251 +505,16 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
 
     if(node.cut % 2 == 0)
     {
-        int x_from, y_from, x_to, y_to;
-
-        if(node.children.empty())
-        {
-            x_from = node.x;
-            x_to = node.x + node.w - it.w;
-            y_from = node.y;
-            y_to = node.y + node.h - it.h;
-        }
-        else
-        {
-            x_from = _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
-            x_to = node.x + node.w - it.w;
-            y_from = node.y;
-            y_to = node.y + node.h - it.h;
-        }
-
-        for(int x = x_from; x <= x_to; ++x)
-        {
-            for(int y = y_from; y <= y_to; ++y)
-            {
-                if(can_cut(bin,node,x,y,it))
-                {
-                    if(x == x_from)
-                    {
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) ) return true;
-                    }
-                    else
-                    {
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x_from,
-                            node.y,
-                            x-x_from,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at)) return true;
-                    }
-                }
-            }
-        }
+        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
     }
     else
     {
         if(node.cut == 3)
         {
-            if(can_cut(bin,node,node.x,node.y,it))
-            {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    node.y,
-                    node.w,
-                    it.h,
-                    -2,
-                    4,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    node.y+it.h,
-                    node.w,
-                    node.h-it.h,
-                    -2,
-                    4,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-
-                return cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at);
-            }
-            else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
-            {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    node.y,
-                    node.w,
-                    node.h-it.h,
-                    -2,
-                    4,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    node.y+node.h-it.h,
-                    node.w,
-                    it.h,
-                    -2,
-                    4,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-
-                return cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at);
-            }
-
-            return false;
+            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
         }
-
-        int x_from, y_from, x_to, y_to;
-
-        if(node.children.empty())
-        {
-            x_from = node.x;
-            x_to = node.x + node.w - it.w;
-            y_from = node.y;
-            y_to = node.y + node.h - it.h;
-        }
-        else
-        {
-            x_from = node.x;
-            x_to = node.x + node.w - it.w;
-            y_from = _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
-            y_to = node.y + node.h - it.h;
-        }
-
-        for(int y = y_from; y <= y_to; ++y)
-        {
-            for(int x = x_from; x <= x_to; ++x)
-            {
-                if(can_cut(bin,node,x,y,it))
-                {
-                    if(y == y_from)
-                    {
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) ) return true;
-                    }
-                    else
-                    {
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y_from,
-                            node.w,
-                            y-y_from,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-                        
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at)) return true;
-                    }
-                }
-            }
-        }
+        
+        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
     }
 
     return false;
