@@ -27,10 +27,10 @@ bool Solver::item_in_node(const Node& node, int x, int y, const Item& it) const
 
 bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& defect) const
 {
-    return x < defect.x + defect.w &&
-           y < defect.y + defect.h &&
-           defect.x < x + it.w &&
-           defect.y < y + it.h;
+    return x <= defect.x + defect.w &&
+           y <= defect.y + defect.h &&
+           defect.x <= x + it.w &&
+           defect.y <= y + it.h;
 }
 
 bool Solver::x_cut_touches_defect(int x, const Defect& defect) const
@@ -43,7 +43,7 @@ bool Solver::y_cut_touches_defect(int y, const Defect& defect) const
     return defect.y < y && y < defect.y + defect.h;
 }
 
-bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it) const
+bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
 {
 
     if(!item_in_node(node,x,y,it))
@@ -149,7 +149,7 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         return false;
     }
 
-    // try to cut in children of node
+    // try to cut in descendant of node
     if(!node.children.empty())
     {
         for(auto ch : node.children)
@@ -160,7 +160,7 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
             }
         }
 
-        if(node.cut==3)
+        if(node.cut == 3)
         {
             return false;
         }
@@ -494,37 +494,90 @@ void Solver::set_waste(int node_id, int& node_id_at)
     }
 }
 
-void Solver::solve()
+NextItem Solver::next_item()
 {
-    int bin_at = 0;
-    Bin current_bin = _bins[bin_at];
-    int node_id_at = 0;
-
-    _s.nodes.push_back(Node{
-        current_bin.id,    // plate_id
-        node_id_at,        // node_id
-        0,                 // x
-        0,                 // y
-        current_bin.w,     // w
-        current_bin.h,     // h
-        -2,                // type = branch
-        0,                 // cut = root
-        -1                 // no parent
-    });
-
-    node_id_at++;
-    
-    _s.roots.push_back(0);
-
-    Stack first_stack = _batch.stacks[0];
-
-    for(auto item_id : first_stack.item_ids)
+    for( int i = 0; i < _batch.stacks.size(); ++i )
     {
-        bool prev_item_visited = false;
-        bool can_be_cut = cut(_batch.items[item_id],item_id-1,prev_item_visited,0,current_bin,node_id_at);
+        if( _batch.stacks[i].can_cut && _batch.stacks[i].at < _batch.stacks[i].item_ids.size() )
+        {
+            _batch.stacks[i].at++;
+            return {i, _batch.stacks[i].at-1};
+        }
     }
 
-    set_waste(0,node_id_at);
+    return {-1,-1};
+}
+
+void Solver::solve()
+{
+    int node_id_at = 0;
+
+    for(auto& bin: _bins)
+    {
+        // add root node
+        _s.nodes.push_back(Node{
+            bin.id,         // bin id
+            node_id_at,     // node id
+            0,              // x
+            0,              // y
+            bin.w,          // w
+            bin.h,          // h
+            -2,             // branch
+            0,              // cut type
+            -1              // no parent
+        });
+
+        _s.roots.push_back(node_id_at);
+
+        node_id_at++;
+
+        NextItem next = next_item();
+
+        while(next.stack_id != -1)
+        {
+            bool prev_item_visited = false;
+
+            bool can_be_cut = cut( _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]], // next item
+                                   _batch.stacks[next.stack_id].prev_item, // previous item id
+                                   prev_item_visited, // false
+                                   _s.roots.back(), // starting node id = current root
+                                   bin, // current bin used
+                                   node_id_at
+            );
+
+            if(!can_be_cut)
+            {
+                _batch.stacks[next.stack_id].at --;
+                _batch.stacks[next.stack_id].can_cut = false;
+            }
+            else
+            {
+                _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
+            }
+
+            next = next_item();
+        }
+
+        bool finished = true;
+
+        for(auto& stack : _batch.stacks)
+        {
+            if(stack.at < stack.item_ids.size())
+            {
+                finished = false;
+            }
+
+            stack.can_cut = true;
+            stack.prev_item = -1;
+        }
+
+        if(finished)
+        {
+            break;
+        }
+    }
+
+    for(auto root : _s.roots) set_waste(root,node_id_at);
 
     if( _s.nodes[_s.nodes[_s.roots.back()].children.back()].type == -1 )
     {

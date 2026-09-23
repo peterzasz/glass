@@ -20,6 +20,8 @@ struct Stack
     int id;
 
     int at = 0; // next item to finish
+    int prev_item = -1;
+    bool can_cut = true;
 };
 
 struct Batch
@@ -73,6 +75,12 @@ struct Solution
     std::vector<int> roots;
 
     int root_at;
+};
+
+struct NextItem
+{
+    int stack_id;
+    int sequence;
 };
 
 
