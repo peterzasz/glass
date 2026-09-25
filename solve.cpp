@@ -1,6 +1,7 @@
 #include "solve.h"
 #include "data.h"
 #include <iostream>
+#include <utility>
 
 constexpr int min_1_cut = 100;
 constexpr int max_1_cut = 3500;
@@ -33,6 +34,19 @@ bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& def
            defect.y < y + it.h;
 }
 
+bool Solver::no_defect_in_node(const Node& node, const Bin& bin) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool Solver::x_cut_touches_defect(int x, const Defect& defect) const
 {
     return defect.x < x && x < defect.x + defect.w;
@@ -43,70 +57,11 @@ bool Solver::y_cut_touches_defect(int y, const Defect& defect) const
     return defect.y < y && y < defect.y + defect.h;
 }
 
-bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
+bool Solver::valid_x_cut(int x, const Node& node, const Bin& bin) const
 {
-    if(!item_in_node(node,x,y,it))
+    for(auto& defect : bin.defects)
     {
-        return false;
-    }
-
-    std::vector<Defect> defects;
-
-    for(const auto& defect : bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            defects.push_back(defect);
-        }
-    }
-
-    for(const auto& defect : defects)
-    {
-        if(item_touches_defect(x,y,it,defect))
-        {
-            return false;
-        }
-    }
-
-    if(node.cut == 4)
-    {
-        if(it.w == node.w && it.h == node.h)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    if( node.cut%2 == 0 )
-    {
-        for(const auto& defect : defects)
-        {
-            if(x_cut_touches_defect( x, defect ) || x_cut_touches_defect( x + it.w, defect ))
-            {
-                return false;
-            }
-        }
-    }
-    else
-    {
-        for(const auto& defect : defects)
-        {
-            if(y_cut_touches_defect( y, defect ) || y_cut_touches_defect( y + it.h, defect ))
-            {
-                return false;
-            }
-        }
-    }
-
-    if( node.cut == 3 )
-    {
-        if( node.x != x || node.x + node.w != x + it.w )
-        {
-            return false;
-        }
-
-        if( node.y != y && node.y + node.h != y + it.h )
+        if(defect_in_node(node,defect) && x_cut_touches_defect(x,defect))
         {
             return false;
         }
@@ -115,53 +70,127 @@ bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item&
     return true;
 }
 
-bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at )
+bool Solver::valid_y_cut(int y, const Node& node, const Bin& bin) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if(defect_in_node(node,defect) && y_cut_touches_defect(y,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Solver::try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked )
 {
     Node node = _s.nodes[node_id];
     
-    int x_from, y_from, x_to, y_to;
+    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+    int y_to = node.y + node.h;
 
-    if(node.children.empty())
+    for(int y = y_from; y <= y_to; ++y)
     {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
-    else
-    {
-        x_from = _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
-
-    for(int x = x_from; x <= x_to; ++x)
-    {
-        for(int y = y_from; y <= y_to; ++y)
+        if(!(y > y_from && y-y_from < min_waste))
         {
-            if(!((x > x_from && x - x_from < min_waste) ||
-                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
-                    (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
-                    (node.cut == 0 && x > x_from && (x-x_from < min_1_cut || x-x_from > max_1_cut))
-                ))
+            if( item_in_node(node,node.x,y,it) &&
+                !(y + it.h < y_to && y_to - y - it.h < min_waste) &&
+                !(node.cut == 1 && it.h < min_2_cut) && 
+                valid_y_cut(y,node,bin) && 
+                valid_y_cut(y+it.h,node,bin) )
             {
-                if(can_cut(bin,node,x,y,it))
-                {
-                    if(x == x_from)
-                    {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
+                int nodes_size = _s.nodes.size();
+                int node_children_size = node.children.size();
+                int node_id_at_current = node_id_at;
 
+                if(y == y_from)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+                else
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y_from,
+                        node.w,
+                        y-y_from,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+
+                if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                {
+                    return true;
+                }
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(node_children_size);
+                node_id_at = node_id_at_current;
+            }
+
+            if( !orientation_locked && it.w != it.h )
+            {
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
+
+                if( item_in_node(node,node.x,y,rotated) &&
+                    !(y + rotated.h < y_to && y_to - y - rotated.h < min_waste) &&
+                    !(node.cut == 1 && (rotated.h < min_2_cut)) && 
+                    valid_y_cut(y,node,bin) && 
+                    valid_y_cut(y+rotated.h,node,bin) )
+                {
+                    int nodes_size = _s.nodes.size();
+                    int node_children_size = node.children.size();
+                    int node_id_at_current = node_id_at;
+
+                    if(y == y_from)
+                    {
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
+                            node.x,
+                            y,
+                            node.w,
+                            rotated.h,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -170,31 +199,16 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         _s.nodes[node_id].children.push_back(node_id_at);
 
                         node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
-                        }
                     }
                     else
                     {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
-
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            x_from,
-                            node.y,
-                            x-x_from,
-                            node.h,
+                            node.x,
+                            y_from,
+                            node.w,
+                            y-y_from,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -205,12 +219,12 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         node_id_at++;
 
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
+                            node.x,
+                            y,
+                            node.w,
+                            rotated.h,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -219,18 +233,16 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         _s.nodes[node_id].children.push_back(node_id_at);
 
                         node_id_at++;
-
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
-                        }
                     }
+
+                    if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+
+                    _s.nodes.resize(nodes_size);
+                    _s.nodes[node_id].children.resize(node_children_size);
+                    node_id_at = node_id_at_current;
                 }
             }
         }
@@ -239,11 +251,42 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
     return false;
 }
 
-bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::can_do_bottom_4_cut(const Bin& bin, const Node& node, const Item& it) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if( defect_in_node(node,defect) && item_touches_defect(node.x,node.y,it,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Solver::can_do_top_4_cut(const Bin& bin, const Node& node, const Item& it) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if( defect_in_node(node,defect) && item_touches_defect(node.x,node.y+node.h-it.h,it,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
 {
     Node node = _s.nodes[node_id];
 
-    if(can_cut(bin,node,node.x,node.y,it))
+    if(it.w != node.w || it.h > node.h)
+    {
+        return false;
+    }
+
+    if(can_do_bottom_4_cut(bin,node,it))
     {
         if(node.h-it.h >= min_waste)
         {
@@ -279,10 +322,11 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
 
             node_id_at++;
 
-            return cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at);
+            return cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,orientation_locked);
         }
     }
-    else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
+    
+    if(can_do_top_4_cut(bin,node,it))
     {
         if(node.h-it.h >= min_waste)
         {
@@ -318,60 +362,121 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
 
             node_id_at++;
 
-            return cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at);
+            return cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,orientation_locked);
         }
     }
 
     return false;
 }
 
-bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
 {
     Node node = _s.nodes[node_id];
 
-    int x_from, y_from, x_to, y_to;
+    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+    int x_to = node.x + node.w;
 
-    if(node.children.empty())
+    for(int x = x_from; x <= x_to; ++x)
     {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
-    else
-    {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
-        y_to = node.y + node.h - it.h;
-    }
-
-    for(int y = y_from; y <= y_to; ++y)
-    {
-        for(int x = x_from; x <= x_to; ++x)
+        if(!(x > x_from && x-x_from < min_waste))
         {
-            if(!((x > x_from && x - x_from < min_waste) ||
-                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
-                    (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
-                    (node.cut == 1 && y > y_from && y-y_from < min_2_cut)
-                ))
+            if( item_in_node(node,x,node.y,it) &&
+                !(x + it.w < x_to && x_to - x - it.w < min_waste) &&
+                !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
+                valid_x_cut(x,node,bin) && 
+                valid_x_cut(x+it.w,node,bin) )
             {
-                if(can_cut(bin,node,x,y,it))
-                {
-                    if(y == y_from)
-                    {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
+                int nodes_size = _s.nodes.size();
+                int node_children_size = node.children.size();
+                int node_id_at_current = node_id_at;
 
+                if(x == x_from)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+                else
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x_from,
+                        node.y,
+                        x-x_from,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+
+                if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                {
+                    return true;
+                }
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(node_children_size);
+                node_id_at = node_id_at_current;
+            }
+
+            if( !orientation_locked && it.w != it.h )
+            {
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
+
+                if( item_in_node(node,x,node.y,rotated) &&
+                    !(x + rotated.w < x_to && x_to - x - rotated.w < min_waste) &&
+                    !(node.cut == 0 && (rotated.w < min_1_cut || rotated.w > max_1_cut)) && 
+                    valid_x_cut(x,node,bin) && 
+                    valid_x_cut(x+rotated.w,node,bin) )
+                {
+                    int nodes_size = _s.nodes.size();
+                    int node_children_size = node.children.size();
+                    int node_id_at_current = node_id_at;
+
+                    if(x == x_from)
+                    {
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
+                            x,
+                            node.y,
+                            rotated.w,
+                            node.h,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -380,31 +485,16 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         _s.nodes[node_id].children.push_back(node_id_at);
 
                         node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
-                        }
                     }
                     else
                     {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
-
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            node.x,
-                            y_from,
-                            node.w,
-                            y-y_from,
+                            x_from,
+                            node.y,
+                            x-x_from,
+                            node.h,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -415,12 +505,12 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         node_id_at++;
 
                         _s.nodes.push_back(Node{
-                            node.plate_id,
+                            bin.id,
                             node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
+                            x,
+                            node.y,
+                            rotated.w,
+                            node.h,
                             -2,
                             node.cut + 1,
                             node.node_id
@@ -429,18 +519,16 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         _s.nodes[node_id].children.push_back(node_id_at);
 
                         node_id_at++;
-                        
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
-                        }
                     }
+
+                    if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+
+                    _s.nodes.resize(nodes_size);
+                    _s.nodes[node_id].children.resize(node_children_size);
+                    node_id_at = node_id_at_current;
                 }
             }
         }
@@ -449,7 +537,7 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
     return false;
 }
 
-bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
 {
     Node node = _s.nodes[node_id];
 
@@ -472,7 +560,7 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
             return false;
         }
 
-        if(prev_item_visited && can_cut(bin,node,node.x,node.y,it))
+        if(prev_item_visited && no_defect_in_node(node,bin))
         {
             _s.nodes[node_id].type = it.id;
 
@@ -482,12 +570,17 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         return false;
     }
 
+    if(node.cut == 4)
+    {
+        return false;
+    }
+
     // try to cut in descendant of node
     if(!node.children.empty())
     {
         for(auto ch : node.children)
         {
-            if(cut(it,prev_item_id, prev_item_visited, ch, bin, node_id_at))
+            if(cut(it,prev_item_id, prev_item_visited, ch, bin, node_id_at, orientation_locked))
             {
                 return true;
             }
@@ -499,7 +592,6 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         }
     }
 
-    
     // try to cut new part out of this node
     if(!prev_item_visited)
     {
@@ -508,16 +600,16 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
 
     if(node.cut % 2 == 0)
     {
-        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at,orientation_locked);
     }
     else
     {
         if(node.cut == 3)
         {
-            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at, orientation_locked);
         }
         
-        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at,orientation_locked);
     }
 
     return false;
@@ -640,7 +732,8 @@ void Solver::solve()
                                    prev_item_visited, // false
                                    _s.roots.back(), // starting node id = current root
                                    bin, // current bin used
-                                   node_id_at
+                                   node_id_at,
+                                   false
             );
 
             if(!can_be_cut)
