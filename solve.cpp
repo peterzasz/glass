@@ -45,7 +45,6 @@ bool Solver::y_cut_touches_defect(int y, const Defect& defect) const
 
 bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
 {
-
     if(!item_in_node(node,x,y,it))
     {
         return false;
@@ -116,7 +115,7 @@ bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item&
     return true;
 }
 
-bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at )
+bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at )
 {
     Node node = _s.nodes[node_id];
     
@@ -144,7 +143,9 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
             if(!((x > x_from && x - x_from < min_waste) ||
                     (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
                     (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste)))
+                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
+                    (node.cut == 0 && x > x_from && (x-x_from < min_1_cut || x-x_from > max_1_cut))
+                ))
             {
                 if(can_cut(bin,node,x,y,it))
                 {
@@ -352,7 +353,9 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
             if(!((x > x_from && x - x_from < min_waste) ||
                     (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
                     (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste)))
+                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
+                    (node.cut == 1 && y > y_from && y-y_from < min_2_cut)
+                ))
             {
                 if(can_cut(bin,node,x,y,it))
                 {

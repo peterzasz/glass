@@ -3,7 +3,6 @@
 #include "solve.h"
 #include <iostream>
 #include <vector>
-#include <format>
 
 int main()
 {
