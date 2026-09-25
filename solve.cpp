@@ -283,6 +283,17 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
 
     if(it.w != node.w || it.h > node.h)
     {
+        if(!orientation_locked)
+        {
+            Item rotated = it;
+            std::swap(rotated.h,rotated.w);
+
+            if(try_4_cut(rotated, prev_item_id, prev_item_visited,node_id,bin,node_id_at,true))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -553,7 +564,7 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
     }
 
     //check if node is the same size as item
-    if(it.w == node.w && it.h == node.h)
+    if( (it.w == node.w && it.h == node.h) || (!orientation_locked && it.h == node.w && it.w == node.h) )
     {
         if(!node.children.empty())
         {
