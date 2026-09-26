@@ -16,7 +16,6 @@ class Solver
         std::vector<Bin> _bins;
         Batch _batch;
         Solution _s;
-        long long can_cut_calls = 0;
 
         bool defect_in_node(const Node& node, const Defect& defect) const;
         bool item_in_node(const Node& node, int x, int y, const Item& it) const;
@@ -33,6 +32,9 @@ class Solver
         bool try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
         bool try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
         bool try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
+
+        void initialize_stack_order();
+        void order_stack();
 
         void set_waste(int node_id, int& node_id_at);
 

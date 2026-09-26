@@ -2,6 +2,7 @@
 #include "data.h"
 #include <iostream>
 #include <utility>
+#include <algorithm>
 
 constexpr int min_1_cut = 100;
 constexpr int max_1_cut = 3500;
@@ -699,14 +700,54 @@ NextItem Solver::next_item()
 {
     for( int i = 0; i < _batch.stacks.size(); ++i )
     {
-        if( _batch.stacks[i].can_cut && _batch.stacks[i].at < _batch.stacks[i].item_ids.size() )
+        if( _batch.stacks[_batch.order[i]].can_cut && _batch.stacks[_batch.order[i]].at < _batch.stacks[_batch.order[i]].item_ids.size() )
         {
-            _batch.stacks[i].at++;
-            return {i, _batch.stacks[i].at-1};
+            _batch.stacks[_batch.order[i]].at++;
+            return {_batch.order[i], _batch.stacks[_batch.order[i]].at-1};
         }
     }
 
     return {-1,-1};
+}
+
+void Solver::initialize_stack_order()
+{
+    _batch.order.resize(_batch.stacks.size());
+    for(int i = 0; i < _batch.order.size(); ++i)
+    {
+        _batch.order[i] = i;
+    }
+}
+
+void Solver::order_stack()
+{
+    std::sort(
+        _batch.order.begin(),
+        _batch.order.end(),
+        [this](int a, int b)
+        {
+            bool a_finished = _batch.stacks[a].at >= _batch.stacks[a].item_ids.size();
+            bool b_finished = _batch.stacks[b].at >= _batch.stacks[b].item_ids.size();
+
+            if(a_finished != b_finished)
+            {
+                return !a_finished;
+            }
+
+            if(a_finished)
+            {
+                return false;
+            }
+
+            const Item& item_a =
+                _batch.items[_batch.stacks[a].item_ids[_batch.stacks[a].at]];
+
+            const Item& item_b =
+                _batch.items[_batch.stacks[b].item_ids[_batch.stacks[b].at]];
+
+            return item_a.w * item_a.h > item_b.w * item_b.h;
+        }
+    );
 }
 
 void Solver::solve()
@@ -732,6 +773,9 @@ void Solver::solve()
 
         node_id_at++;
 
+        initialize_stack_order();
+        order_stack();
+
         NextItem next = next_item();
 
         while(next.stack_id != -1)
@@ -755,6 +799,7 @@ void Solver::solve()
             else
             {
                 _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
+                order_stack();
             }
 
             next = next_item();
