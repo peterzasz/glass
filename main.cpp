@@ -16,5 +16,6 @@ int main()
         solver.solve();
 
         write_solution(solver.get_solution(),"/home/peterzasz/Documents/opkutgy/dataset_A/A" + std::to_string(i) + "_solution.csv");
+        std::cout << std::to_string(i) + "th done.\n";
     }
 }

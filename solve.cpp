@@ -89,14 +89,14 @@ bool Solver::try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_vis
     Node node = _s.nodes[node_id];
     
     int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
-    int y_to = node.y + node.h;
+    int y_to = node.y + node.h - std::min(it.w,it.h);
 
     for(int y = y_from; y <= y_to; ++y)
     {
         if(!(y > y_from && y-y_from < min_waste))
         {
             if( item_in_node(node,node.x,y,it) &&
-                !(y + it.h < y_to && y_to - y - it.h < min_waste) &&
+                !(y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) &&
                 !(node.cut == 1 && it.h < min_2_cut) && 
                 valid_y_cut(y,node,bin) && 
                 valid_y_cut(y+it.h,node,bin) )
@@ -174,7 +174,7 @@ bool Solver::try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_vis
                 std::swap(rotated.w,rotated.h);
 
                 if( item_in_node(node,node.x,y,rotated) &&
-                    !(y + rotated.h < y_to && y_to - y - rotated.h < min_waste) &&
+                    !(y + rotated.h < node.y + node.h && node.y + node.h - y - rotated.h < min_waste) &&
                     !(node.cut == 1 && (rotated.h < min_2_cut)) && 
                     valid_y_cut(y,node,bin) && 
                     valid_y_cut(y+rotated.h,node,bin) )
@@ -386,14 +386,14 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
     Node node = _s.nodes[node_id];
 
     int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
-    int x_to = node.x + node.w;
+    int x_to = node.x + node.w - std::min(it.w,it.h);
 
     for(int x = x_from; x <= x_to; ++x)
     {
         if(!(x > x_from && x-x_from < min_waste))
         {
             if( item_in_node(node,x,node.y,it) &&
-                !(x + it.w < x_to && x_to - x - it.w < min_waste) &&
+                !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
                 !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
                 valid_x_cut(x,node,bin) && 
                 valid_x_cut(x+it.w,node,bin) )
@@ -471,7 +471,7 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
                 std::swap(rotated.w,rotated.h);
 
                 if( item_in_node(node,x,node.y,rotated) &&
-                    !(x + rotated.w < x_to && x_to - x - rotated.w < min_waste) &&
+                    !(x + rotated.w < node.x + node.w && node.x + node.w - x - rotated.w < min_waste) &&
                     !(node.cut == 0 && (rotated.w < min_1_cut || rotated.w > max_1_cut)) && 
                     valid_x_cut(x,node,bin) && 
                     valid_x_cut(x+rotated.w,node,bin) )
