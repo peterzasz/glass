@@ -74,8 +74,6 @@ struct Solution
 {
     std::vector<Node> nodes;
     std::vector<int> roots;
-
-    int root_at;
 };
 
 struct NextItem
@@ -84,5 +82,12 @@ struct NextItem
     int sequence;
 };
 
+struct Position
+{
+    int node_id;
+    Item it;
+    int x;
+    int y;
+};
 
 #endif

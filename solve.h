@@ -32,10 +32,14 @@ class Solver
         bool try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
         bool try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
         bool try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
+        bool try_subdivide_node(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
 
         void initialize_stack_order();
         void order_stack();
 
+        std::vector<Position> get_possible_positions();
+        void cut_out_position(Position& pos, int& node_id_at);
+        
         void set_waste(int node_id, int& node_id_at);
 
         NextItem next_item();

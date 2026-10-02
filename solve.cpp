@@ -88,6 +88,7 @@ bool Solver::try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_vis
 {
     Node node = _s.nodes[node_id];
     
+
     int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
     int y_to = node.y + node.h - std::min(it.w,it.h);
 
@@ -549,16 +550,567 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
     return false;
 }
 
+bool Solver::try_subdivide_node(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
+{
+    Node node = _s.nodes[node_id];
+    Node parent = _s.nodes[_s.nodes[node_id].parent];
+
+
+    int child_index = -1;
+    for(int i = 0; i < parent.children.size(); ++i)
+    {
+        if(parent.children[i] == node.node_id)
+        {
+            child_index = i;
+            break;
+        }
+    }
+
+    if(node.cut%2 == 0)
+    {
+        int y_from = node.y;
+        int y_to = node.y + node.h - std::min(it.h,it.w);
+
+        for(int y = y_from; y <= y_to; ++y)
+        {
+            if( node.h - it.h >= min_waste &&
+                valid_y_cut(y,parent,bin) &&
+                valid_y_cut(y + it.h,parent,bin) &&
+                !(y>y_from && y-y_from < min_waste) &&
+                !(y+it.h < node.y+node.h && node.y+node.h-y-it.h < min_waste) &&
+                y+it.h <= node.y + node.h &&
+                !(node.cut == 2 && it.h < min_2_cut))
+            {
+                int current_nodes_size = _s.nodes.size();
+                int current_node_id_at = node_id_at;
+
+                if( y == y_from )
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y + it.h,
+                        node.w,
+                        node.h-it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].h = it.h;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+                else if(y+it.h == node.y + node.h)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].h = node.h-it.h;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+                else
+                {
+                     _s.nodes[node_id].h = y-node.y;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y+it.h,
+                        node.w,
+                        node.y + node.h - y - it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                    node_id_at++;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+            }
+            
+            if(!orientation_locked && it.w != it.h)
+            {
+                
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
+
+                if( node.h - rotated.h >= min_waste && 
+                    valid_y_cut(y,parent,bin) &&
+                    valid_y_cut(y + rotated.h,parent,bin) &&
+                    !(y>y_from && y-y_from < min_waste) &&
+                    !(y+rotated.h < node.y+node.h && node.y+node.h-y-rotated.h < min_waste) &&
+                    y+rotated.h <= node.y + node.h &&
+                    !(node.cut == 2 && rotated.h < min_2_cut))
+                {
+                    int current_nodes_size = _s.nodes.size();
+                    int current_node_id_at = node_id_at;
+
+                    if( y == y_from )
+                    {
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            node.x,
+                            y + rotated.h,
+                            node.w,
+                            node.h-rotated.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes[node_id].h = rotated.h;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                    else if(y+rotated.h == node.y + node.h)
+                    {
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            node.x,
+                            y,
+                            node.w,
+                            rotated.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes[node_id].h = node.h-rotated.h;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                    else
+                    {
+                        _s.nodes[node_id].h = y-node.y;
+
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            node.x,
+                            y,
+                            node.w,
+                            rotated.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            node.x,
+                            y+rotated.h,
+                            node.w,
+                            node.y + node.h - y - rotated.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                        node_id_at++;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        int x_from = node.x;
+        int x_to = node.x + node.w - std::min(it.w,it.h);
+
+        for(int x = x_from; x <= x_to; ++x)
+        {
+            if( node.w - it.w >= min_waste &&
+                valid_x_cut(x,parent,bin) &&
+                valid_x_cut(x + it.w,parent,bin) &&
+                !(x>x_from && x-x_from < min_waste) &&
+                !(x+it.w < node.x+node.w && node.x+node.w-x-it.w < min_waste) &&
+                x + it.w <= node.x + node.w &&
+                !(node.cut == 1 && (it.w < min_1_cut || it.w > max_1_cut)))
+            {
+                int current_nodes_size = _s.nodes.size();
+                int current_node_id_at = node_id_at;
+
+                if( x == x_from )
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x+it.w,
+                        node.y,
+                        node.w-it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].w = it.w;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+                else if(x+it.w == node.x + node.w)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].w = node.w-it.w;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+                else
+                {
+                     _s.nodes[node_id].w = x-node.x;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x+it.w,
+                        node.y,
+                        node.x + node.w -x- it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                    node_id_at++;
+
+                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        _s.nodes.resize(current_nodes_size);
+                        node_id_at = current_node_id_at;
+                        _s.nodes[node_id] = node;
+                        _s.nodes[parent.node_id] = parent;
+                    }
+                }
+            }
+
+            if(!orientation_locked && it.w != it.h)
+            {
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
+
+                if( node.w - rotated.w >= min_waste &&
+                    valid_x_cut(x,parent,bin) &&
+                    valid_x_cut(x + rotated.w,parent,bin) &&
+                    !(x>x_from && x-x_from < min_waste) &&
+                    !(x+rotated.w < node.x+node.w && node.x+node.w-x-rotated.w < min_waste) &&
+                    !(node.cut == 1 && (rotated.w < min_1_cut || rotated.w > max_1_cut)) &&
+                    x + rotated.w <= node.x + node.w)
+                {
+                    int current_nodes_size = _s.nodes.size();
+                    int current_node_id_at = node_id_at;
+
+                    if( x == x_from )
+                    {
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            x+rotated.w,
+                            node.y,
+                            node.w-rotated.w,
+                            node.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes[node_id].w = rotated.w;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                    else if(x+rotated.w == node.x + node.w)
+                    {
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            x,
+                            node.y,
+                            rotated.w,
+                            node.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes[node_id].w = node.w-rotated.w;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                    else
+                    {
+                        _s.nodes[node_id].w = x-node.x;
+
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            x,
+                            node.y,
+                            rotated.w,
+                            node.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                        node_id_at++;
+
+                        _s.nodes.push_back(Node{
+                            bin.id,
+                            node_id_at,
+                            x+rotated.w,
+                            node.y,
+                            node.x + node.w -x- rotated.w,
+                            node.h,
+                            -2,
+                            node.cut,
+                            parent.node_id
+                        });
+
+                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                        node_id_at++;
+
+                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            _s.nodes.resize(current_nodes_size);
+                            node_id_at = current_node_id_at;
+                            _s.nodes[node_id] = node;
+                            _s.nodes[parent.node_id] = parent;
+                        }
+                    }
+                }
+            }
+        }
+
+        
+    }
+
+    return false;
+}
+
 bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
 {
     Node node = _s.nodes[node_id];
 
-    if(prev_item_id == -1 || node.type == prev_item_id)
+    if(prev_item_visited == false && (prev_item_id == -1 || node.type == prev_item_id))
     {
         prev_item_visited = true;
     }
 
-    //check if node is a branch
+    //check if node is a branch: at this point every node is marked either as branch or as item
     if(node.type != -2)
     {
         return false;
@@ -604,12 +1156,21 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         }
     }
 
-    // try to cut new part out of this node
     if(!prev_item_visited)
     {
         return false;
     }
 
+    // try subdivide node
+    if(node.children.empty() && node.parent != -1)
+    {
+        if(try_subdivide_node(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,orientation_locked))
+        {
+            return true;
+        }
+    }
+
+    // try to cut new part out of this node
     if(node.cut % 2 == 0)
     {
         return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at,orientation_locked);
@@ -748,6 +1309,24 @@ void Solver::order_stack()
             return item_a.w * item_a.h > item_b.w * item_b.h;
         }
     );
+}
+
+std::vector<Position> Solver::get_possible_positions()
+{
+    
+    return {};
+}
+
+void Solver::cut_out_position(Position& pos, int& node_id_at)
+{
+    if(_s.nodes[pos.node_id].cut % 2 == 0)
+    {
+        
+    }
+    else
+    {
+
+    }
 }
 
 void Solver::solve()
