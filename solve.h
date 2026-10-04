@@ -34,11 +34,16 @@ class Solver
         bool try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
         bool try_subdivide_node(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
 
+        void get_placements(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked);
+        void placement_try_vertical_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at);
+        void placement_try_4_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at);
+        void placement_try_horizontal_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at);
+        void placement_try_subdivide_node(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at);
+        void apply_change(const Change& change, int& node_id_at);
+        int evaluate_change(const Change& change, Bin& bin, int& node_id_at);
+
         void initialize_stack_order();
         void order_stack();
-
-        std::vector<Position> get_possible_positions();
-        void cut_out_position(Position& pos, int& node_id_at);
         
         void set_waste(int node_id, int& node_id_at);
 

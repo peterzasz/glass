@@ -82,12 +82,11 @@ struct NextItem
     int sequence;
 };
 
-struct Position
+struct Change
 {
-    int node_id;
-    Item it;
-    int x;
-    int y;
+    std::vector<int> node_ids;
+    std::vector<Node> new_nodes;
 };
+
 
 #endif

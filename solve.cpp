@@ -1311,22 +1311,899 @@ void Solver::order_stack()
     );
 }
 
-std::vector<Position> Solver::get_possible_positions()
-{
-    
-    return {};
-}
 
-void Solver::cut_out_position(Position& pos, int& node_id_at)
+
+//TRYING DIFFERENT PLACEMENTS
+
+void Solver::get_placements(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
 {
-    if(_s.nodes[pos.node_id].cut % 2 == 0)
+    Node node = _s.nodes[node_id];
+
+    if(prev_item_visited == false && (prev_item_id == -1 || node.type == prev_item_id))
     {
+        prev_item_visited = true;
+    }
+
+    //check if node is a branch: at this point every node is marked either as branch or as item
+    if(node.type != -2)
+    {
+        return;
+    }
+
+    //check if node is the same size as item
+    if( (it.w == node.w && it.h == node.h) || (!orientation_locked && it.h == node.w && it.w == node.h) )
+    {
+        if(!node.children.empty())
+        {
+            return;
+        }
+
+        if(prev_item_visited && no_defect_in_node(node,bin))
+        {
+            current_change.node_ids.push_back(node_id);
+            current_change.new_nodes.push_back(_s.nodes[node_id]);
+            current_change.new_nodes.back().type = it.id;
+
+            placements.push_back(current_change);
+
+            return;
+        }
+
+        return;
+    }
+
+    if(node.cut == 4)
+    {
+        return;
+    }
+
+    // try to cut in descendant of node
+    if(!node.children.empty())
+    {
+        for(auto ch : node.children)
+        {
+            get_placements(current_change,placements,it,prev_item_id, prev_item_visited, ch, bin, node_id_at, orientation_locked);
+        }
+
+        if(node.cut == 3)
+        {
+            return;
+        }
+    }
+
+    if(!prev_item_visited)
+    {
+        return;
+    }
+
+    // try subdivide node
+    if(node.children.empty() && node.parent != -1)
+    {
+        placement_try_subdivide_node(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+
+        if(!orientation_locked && it.w != it.h)
+        {
+            Item rotated = it;
+            std::swap(rotated.w,rotated.h);
+
+            placement_try_subdivide_node(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+        }
+    }
+
+    // try to cut new part out of this node
+    if(node.cut % 2 == 0)
+    {
+        placement_try_vertical_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
         
+        if(!orientation_locked && it.w != it.h)
+        {
+            Item rotated = it;
+            std::swap(rotated.w,rotated.h);
+
+            placement_try_vertical_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+        }
     }
     else
     {
+        if(node.cut == 3)
+        {
+            placement_try_4_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+            
+            if(!orientation_locked && it.w != it.h)
+            {
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
 
+                placement_try_4_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+            }
+        }
+        else
+        {
+            placement_try_horizontal_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+
+            if(!orientation_locked && it.w != it.h)
+            {
+                Item rotated = it;
+                std::swap(rotated.w,rotated.h);
+
+                placement_try_horizontal_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+            }
+        }
     }
+
+    return;
+}
+
+void Solver::placement_try_horizontal_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+    
+
+    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+    int y_to = node.y + node.h - it.h;
+
+    for(int y = y_from; y <= y_to; ++y)
+    {
+        if(!(y > y_from && y-y_from < min_waste))
+        {
+            if( item_in_node(node,node.x,y,it) &&
+                !(y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) &&
+                !(node.cut == 1 && it.h < min_2_cut) && 
+                valid_y_cut(y,node,bin) && 
+                valid_y_cut(y+it.h,node,bin) )
+            {
+                int nodes_size = _s.nodes.size();
+                int node_children_size = node.children.size();
+                int node_id_at_current = node_id_at;
+                int current_change_size = current_change.new_nodes.size();
+
+                if(y == y_from)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+                else
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y_from,
+                        node.w,
+                        y-y_from,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+                }
+
+                int placements_size = placements.size();
+
+                get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
+
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(node_children_size);
+                node_id_at = node_id_at_current;
+                current_change.new_nodes.resize(current_change_size);
+                current_change.node_ids.resize(current_change_size);
+
+                if(placements_size < placements.size())
+                {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void Solver::placement_try_4_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+
+    if(it.w != node.w || it.h > node.h)
+    {
+        return;
+    }
+
+    int nodes_size = _s.nodes.size();
+    int current_node_id_at = node_id_at;
+    int node_children_size = node.children.size();
+    int current_change_size = current_change.new_nodes.size();
+
+    if(can_do_bottom_4_cut(bin,node,it))
+    {
+        if(node.h-it.h >= min_waste)
+        {
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y,
+                node.w,
+                it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            current_change.new_nodes.push_back(_s.nodes.back());
+            current_change.node_ids.push_back(node_id_at);
+
+            node_id_at++;
+
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y+it.h,
+                node.w,
+                node.h-it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            current_change.new_nodes.push_back(_s.nodes.back());
+            current_change.node_ids.push_back(node_id_at);
+            current_change.new_nodes.push_back(_s.nodes[node_id]);
+            current_change.node_ids.push_back(node_id);
+
+            node_id_at++;
+
+            get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
+
+            _s.nodes.resize(nodes_size);
+            node_id_at = current_node_id_at;
+            _s.nodes[node_id].children.resize(node_children_size);
+            current_change.new_nodes.resize(current_change_size);
+            current_change.node_ids.resize(current_change_size);
+        }
+    }
+    
+    if(can_do_top_4_cut(bin,node,it))
+    {
+        if(node.h-it.h >= min_waste)
+        {
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y,
+                node.w,
+                node.h-it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            current_change.new_nodes.push_back(_s.nodes.back());
+            current_change.node_ids.push_back(node_id_at);
+
+            node_id_at++;
+
+            _s.nodes.push_back(Node{
+                node.plate_id,
+                node_id_at,
+                node.x,
+                node.y+node.h-it.h,
+                node.w,
+                it.h,
+                -2,
+                4,
+                node.node_id
+            });
+
+            _s.nodes[node_id].children.push_back(node_id_at);
+
+            current_change.new_nodes.push_back(_s.nodes.back());
+            current_change.node_ids.push_back(node_id_at);
+            current_change.new_nodes.push_back(_s.nodes[node_id]);
+            current_change.node_ids.push_back(node_id);
+
+            node_id_at++;
+
+            get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
+
+            _s.nodes.resize(nodes_size);
+            node_id_at = current_node_id_at;
+            _s.nodes[node_id].children.resize(node_children_size);
+            current_change.new_nodes.resize(current_change_size);
+            current_change.node_ids.resize(current_change_size);
+        }
+    }
+}
+
+void Solver::placement_try_vertical_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+
+    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+    int x_to = node.x + node.w - it.w;
+
+    for(int x = x_from; x <= x_to; ++x)
+    {
+        if(!(x > x_from && x-x_from < min_waste))
+        {
+            if( item_in_node(node,x,node.y,it) &&
+                !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
+                !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
+                valid_x_cut(x,node,bin) && 
+                valid_x_cut(x+it.w,node,bin) )
+            {
+                int nodes_size = _s.nodes.size();
+                int node_children_size = node.children.size();
+                int node_id_at_current = node_id_at;
+                int current_change_size = current_change.new_nodes.size();
+
+                if(x == x_from)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    node_id_at++;
+                }
+                else
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x_from,
+                        node.y,
+                        x-x_from,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut + 1,
+                        node.node_id
+                    });
+
+                    _s.nodes[node_id].children.push_back(node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    node_id_at++;
+                }
+
+                int placements_size = placements.size();
+
+                get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(node_children_size);
+                node_id_at = node_id_at_current;
+                current_change.new_nodes.resize(current_change_size);
+                current_change.node_ids.resize(current_change_size);
+
+                if(placements_size < placements.size())
+                {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void Solver::placement_try_subdivide_node(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+{
+    Node node = _s.nodes[node_id];
+    Node parent = _s.nodes[_s.nodes[node_id].parent];
+
+
+    int child_index = -1;
+    for(int i = 0; i < parent.children.size(); ++i)
+    {
+        if(parent.children[i] == node.node_id)
+        {
+            child_index = i;
+            break;
+        }
+    }
+
+    if(node.cut%2 == 0)
+    {
+        int y_from = node.y;
+        int y_to = node.y + node.h - it.h;
+
+        for(int y = y_from; y <= y_to; ++y)
+        {
+            if( node.h - it.h >= min_waste &&
+                valid_y_cut(y,parent,bin) &&
+                valid_y_cut(y + it.h,parent,bin) &&
+                !(y>y_from && y-y_from < min_waste) &&
+                !(y+it.h < node.y+node.h && node.y+node.h-y-it.h < min_waste) &&
+                y+it.h <= node.y + node.h &&
+                !(node.cut == 2 && it.h < min_2_cut))
+            {
+                int current_nodes_size = _s.nodes.size();
+                int current_node_id_at = node_id_at;
+                int current_change_size = current_change.new_nodes.size();
+
+                if( y == y_from )
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y + it.h,
+                        node.w,
+                        node.h-it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+                    
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].h = it.h;
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
+            
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+                }
+                else if(y+it.h == node.y + node.h)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].h = node.h-it.h;
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
+                    
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                     _s.nodes[node_id].h = y-node.y;
+
+                     current_change.new_nodes.push_back(_s.nodes[node_id]);
+                     current_change.node_ids.push_back(node_id);
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y,
+                        node.w,
+                        it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        node.x,
+                        y+it.h,
+                        node.w,
+                        node.y + node.h - y - it.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+
+                    node_id_at++;
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
+                    
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+                }
+            }            
+       }
+    }
+    else
+    {
+        int x_from = node.x;
+        int x_to = node.x + node.w - it.w;
+
+        for(int x = x_from; x <= x_to; ++x)
+        {
+            if( node.w - it.w >= min_waste &&
+                valid_x_cut(x,parent,bin) &&
+                valid_x_cut(x + it.w,parent,bin) &&
+                !(x>x_from && x-x_from < min_waste) &&
+                !(x+it.w < node.x+node.w && node.x+node.w-x-it.w < min_waste) &&
+                x + it.w <= node.x + node.w &&
+                !(node.cut == 1 && (it.w < min_1_cut || it.w > max_1_cut)))
+            {
+                int current_nodes_size = _s.nodes.size();
+                int current_node_id_at = node_id_at;
+                int current_change_size = current_change.new_nodes.size();
+
+                if( x == x_from )
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x+it.w,
+                        node.y,
+                        node.w-it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].w = it.w;
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
+                    
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+                    
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+
+                }
+                else if(x+it.w == node.x + node.w)
+                {
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+
+                    node_id_at++;
+
+                    _s.nodes[node_id].w = node.w-it.w;
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
+    
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    _s.nodes[node_id].w = x-node.x;
+
+                    current_change.new_nodes.push_back(_s.nodes[node_id]);
+                    current_change.node_ids.push_back(node_id);
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x,
+                        node.y,
+                        it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
+
+                    node_id_at++;
+
+                    _s.nodes.push_back(Node{
+                        bin.id,
+                        node_id_at,
+                        x+it.w,
+                        node.y,
+                        node.x + node.w -x- it.w,
+                        node.h,
+                        -2,
+                        node.cut,
+                        parent.node_id
+                    });
+
+                    current_change.new_nodes.push_back(_s.nodes.back());
+                    current_change.node_ids.push_back(node_id_at);
+
+                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
+
+                    current_change.new_nodes.push_back(_s.nodes[parent.node_id]);
+                    current_change.node_ids.push_back(parent.node_id);
+
+                    node_id_at++;
+
+                    int placements_size = placements.size();
+
+                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
+                
+                    _s.nodes.resize(current_nodes_size);
+                    node_id_at = current_node_id_at;
+                    _s.nodes[node_id] = node;
+                    _s.nodes[parent.node_id] = parent;
+                    current_change.new_nodes.resize(current_change_size);
+                    current_change.node_ids.resize(current_change_size);
+
+                    if(placements_size < placements.size())
+                    {
+                        return;
+                    }
+                }
+            }
+        }   
+    }
+}
+
+void Solver::apply_change(const Change& change, int& node_id_at)
+{
+    for(int i = 0; i < change.new_nodes.size(); ++i)
+    {
+        if(change.node_ids[i] >= _s.nodes.size())
+        {
+            _s.nodes.resize(change.node_ids[i]+1); 
+        }
+
+        _s.nodes[change.node_ids[i]] = change.new_nodes[i];
+    }
+
+    node_id_at = _s.nodes.size();
+}
+
+int Solver::evaluate_change(const Change& change, Bin& bin, int& node_id_at)
+{
+    Solution save_solution = _s;
+    Batch save_batch = _batch;
+    int save_node_id_at = node_id_at;
+
+    apply_change(change,node_id_at);
+
+    NextItem next = next_item();
+
+    int total_area = 0;
+
+    while(next.stack_id != -1)
+    {
+        bool prev_item_visited = false;
+
+        Item item = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
+
+        bool can_be_cut = cut( item, // next item
+                                _batch.stacks[next.stack_id].prev_item, // previous item id
+                                prev_item_visited, // false
+                                _s.roots.back(), // starting node id = current root
+                                bin, // current bin used
+                                node_id_at,
+                                false
+        );
+
+        if(!can_be_cut)
+        {
+            _batch.stacks[next.stack_id].at --;
+            _batch.stacks[next.stack_id].can_cut = false;
+        }
+        else
+        {
+            _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
+            total_area = total_area + item.w*item.h;
+            order_stack();
+        }
+
+        next = next_item();
+    }
+
+    _s = save_solution;
+    _batch = save_batch;
+    node_id_at = save_node_id_at;
+
+    return total_area;
 }
 
 void Solver::solve()
@@ -1359,18 +2236,24 @@ void Solver::solve()
 
         while(next.stack_id != -1)
         {
+            Change current_change;
+            std::vector<Change> placements;
+
+            Item it = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
             bool prev_item_visited = false;
 
-            bool can_be_cut = cut( _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]], // next item
-                                   _batch.stacks[next.stack_id].prev_item, // previous item id
-                                   prev_item_visited, // false
-                                   _s.roots.back(), // starting node id = current root
-                                   bin, // current bin used
-                                   node_id_at,
-                                   false
-            );
-
-            if(!can_be_cut)
+            get_placements( current_change,
+                            placements,
+                            it,
+                            _batch.stacks[next.stack_id].prev_item,
+                            prev_item_visited,
+                            _s.roots.back(),
+                            bin,
+                            node_id_at,
+                            false
+                            );
+            
+            if(placements.empty())
             {
                 _batch.stacks[next.stack_id].at --;
                 _batch.stacks[next.stack_id].can_cut = false;
@@ -1378,6 +2261,23 @@ void Solver::solve()
             else
             {
                 _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
+
+                int max_value = -1;
+                Change best_change;
+
+                for(auto& change : placements)
+                {
+                    int change_val = evaluate_change(change,bin,node_id_at);
+
+                    if(max_value < change_val)
+                    {
+                        max_value = change_val;
+                        best_change = change;
+                    }
+                }
+
+                apply_change(best_change,node_id_at);
+
                 order_stack();
             }
 
