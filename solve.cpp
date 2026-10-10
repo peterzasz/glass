@@ -396,9 +396,12 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
             if( item_in_node(node,x,node.y,it) &&
                 !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
                 !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
+                !(node.cut == 0 && x > x_from && (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
                 valid_x_cut(x,node,bin) && 
                 valid_x_cut(x+it.w,node,bin) )
             {
+
+
                 int nodes_size = _s.nodes.size();
                 int node_children_size = node.children.size();
                 int node_id_at_current = node_id_at;
@@ -474,6 +477,7 @@ bool Solver::try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visite
                 if( item_in_node(node,x,node.y,rotated) &&
                     !(x + rotated.w < node.x + node.w && node.x + node.w - x - rotated.w < min_waste) &&
                     !(node.cut == 0 && (rotated.w < min_1_cut || rotated.w > max_1_cut)) && 
+                    !(node.cut == 0 && x > x_from && (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
                     valid_x_cut(x,node,bin) && 
                     valid_x_cut(x+rotated.w,node,bin) )
                 {
@@ -1434,15 +1438,67 @@ void Solver::get_placements(Change current_change, std::vector<Change>& placemen
     return;
 }
 
+std::vector<int> Solver::get_possible_y_cut_positions(Item& it, Node& node, Bin& bin) const
+{
+    std::vector<int> positions;
+    int y_from =  node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+    int y_to = node.y + node.h - it.h;
+
+    for(int y = y_from; y <= y_to; y++)
+    {
+        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
+        {
+            positions.push_back(y);
+            break;
+        }
+    }
+
+    for(int y = y_to; y >= y_from; --y)
+    {
+        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
+        {
+            if(positions.empty() || y != positions.back())
+            {
+                positions.push_back(y);
+            }
+
+            break;
+        }
+    }
+
+    for(auto& defect: bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            if(defect.y-it.h >= y_from && defect.y-it.h <= y_to)
+            {
+                positions.push_back(defect.y-it.h);
+            }
+
+            if(defect.y+defect.h >= y_from && defect.y+defect.h <= y_to)
+            {
+                positions.push_back(defect.y+defect.h);
+            }
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end()
+    );
+
+    return positions;
+}
+
 void Solver::placement_try_horizontal_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
 {
     Node node = _s.nodes[node_id];
     
 
     int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
-    int y_to = node.y + node.h - it.h;
 
-    for(int y = y_from; y <= y_to; ++y)
+    for(int y : get_possible_y_cut_positions(it,node,bin))
     {
         if(!(y > y_from && y-y_from < min_waste))
         {
@@ -1523,8 +1579,6 @@ void Solver::placement_try_horizontal_cut(Change current_change, std::vector<Cha
                     node_id_at++;
                 }
 
-                int placements_size = placements.size();
-
                 get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
 
 
@@ -1533,11 +1587,6 @@ void Solver::placement_try_horizontal_cut(Change current_change, std::vector<Cha
                 node_id_at = node_id_at_current;
                 current_change.new_nodes.resize(current_change_size);
                 current_change.node_ids.resize(current_change_size);
-
-                if(placements_size < placements.size())
-                {
-                    return;
-                }
             }
         }
     }
@@ -1666,20 +1715,73 @@ void Solver::placement_try_4_cut(Change current_change, std::vector<Change>& pla
     }
 }
 
+std::vector<int> Solver::get_possible_x_cut_positions(Item& it, Node& node, Bin& bin) const
+{
+    std::vector<int> positions;
+    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+    int x_to = node.x + node.w - it.w;
+
+    for(int x = x_from; x <= x_to; x++)
+    {
+        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
+        {
+            positions.push_back(x);
+            break;
+        }
+    }
+
+    for(int x = x_to; x >= x_from; --x)
+    {
+        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
+        {
+            if(positions.empty() || x != positions.back())
+            {
+                positions.push_back(x);
+            }
+
+            break;
+        }
+    }
+
+    for(auto& defect: bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            if(defect.x-it.w >= x_from && defect.x-it.w <= x_to)
+            {
+                positions.push_back(defect.x-it.w);
+            }
+            
+            if(defect.x+defect.w >= x_from && defect.x+defect.w <= x_to)
+            {
+                positions.push_back(defect.x+defect.w);
+            }
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end()
+    );
+
+    return positions;
+}
+
 void Solver::placement_try_vertical_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
 {
     Node node = _s.nodes[node_id];
 
     int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
-    int x_to = node.x + node.w - it.w;
 
-    for(int x = x_from; x <= x_to; ++x)
+    for(auto x : get_possible_x_cut_positions(it,_s.nodes[node_id],bin))
     {
         if(!(x > x_from && x-x_from < min_waste))
         {
             if( item_in_node(node,x,node.y,it) &&
                 !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
                 !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
+                !(node.cut == 0 && x > x_from && (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
                 valid_x_cut(x,node,bin) && 
                 valid_x_cut(x+it.w,node,bin) )
             {
@@ -1754,8 +1856,6 @@ void Solver::placement_try_vertical_cut(Change current_change, std::vector<Chang
                     node_id_at++;
                 }
 
-                int placements_size = placements.size();
-
                 get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
 
                 _s.nodes.resize(nodes_size);
@@ -1763,14 +1863,115 @@ void Solver::placement_try_vertical_cut(Change current_change, std::vector<Chang
                 node_id_at = node_id_at_current;
                 current_change.new_nodes.resize(current_change_size);
                 current_change.node_ids.resize(current_change_size);
-
-                if(placements_size < placements.size())
-                {
-                    return;
-                }
             }
         }
     }
+}
+
+std::vector<int> Solver::get_possible_y_cut_positions_subdivision(Item& it, Node& node, Bin& bin) const
+{
+    std::vector<int> positions;
+    int y_from = node.y;
+    int y_to = node.y + node.h - it.h;
+
+    for(int y = y_from; y <= y_to; y++)
+    {
+        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
+        {
+            positions.push_back(y);
+            break;
+        }
+    }
+
+    for(int y = y_to; y >= y_from; --y)
+    {
+        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
+        {
+            if(positions.empty() || y != positions.back())
+            {
+                positions.push_back(y);
+            }
+
+            break;
+        }
+    }
+
+    for(auto& defect: bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            if(defect.y-it.h >= y_from && defect.y-it.h <= y_to)
+            {
+                positions.push_back(defect.y-it.h);
+            }
+
+            if(defect.y+defect.h >= y_from && defect.y+defect.h <= y_to)
+            {
+                positions.push_back(defect.y+defect.h);
+            }
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end()
+    );
+
+    return positions;
+}
+
+std::vector<int> Solver::get_possible_x_cut_positions_subdivision(Item& it, Node& node, Bin& bin) const
+{
+    std::vector<int> positions;
+    int x_from = node.x;
+    int x_to = node.x + node.w - it.w;
+
+    for(int x = x_from; x <= x_to; x++)
+    {
+        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
+        {
+            positions.push_back(x);
+            break;
+        }
+    }
+
+    for(int x = x_to; x >= x_from; --x)
+    {
+        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
+        {
+            if(positions.empty() || x != positions.back())
+            {
+                positions.push_back(x);
+            }
+
+            break;
+        }
+    }
+
+    for(auto& defect: bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            if(defect.x-it.w >= x_from && defect.x-it.w <= x_to)
+            {
+                positions.push_back(defect.x-it.w);
+            }
+            
+            if(defect.x+defect.w >= x_from && defect.x+defect.w <= x_to)
+            {
+                positions.push_back(defect.x+defect.w);
+            }
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end()
+    );
+
+    return positions;
 }
 
 void Solver::placement_try_subdivide_node(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
@@ -1794,7 +1995,7 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
         int y_from = node.y;
         int y_to = node.y + node.h - it.h;
 
-        for(int y = y_from; y <= y_to; ++y)
+        for(int y : get_possible_y_cut_positions_subdivision(it,_s.nodes[node_id],bin))
         {
             if( node.h - it.h >= min_waste &&
                 valid_y_cut(y,parent,bin) &&
@@ -1836,8 +2037,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     current_change.new_nodes.push_back(_s.nodes[node_id]);
                     current_change.node_ids.push_back(node_id);
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
             
                     _s.nodes.resize(current_nodes_size);
@@ -1846,11 +2045,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     _s.nodes[parent.node_id] = parent;
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
-
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
                 }
                 else if(y+it.h == node.y + node.h)
                 {
@@ -1881,8 +2075,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     current_change.new_nodes.push_back(_s.nodes[node_id]);
                     current_change.node_ids.push_back(node_id);
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
                     
                     _s.nodes.resize(current_nodes_size);
@@ -1892,10 +2084,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
 
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
                 }
                 else
                 {
@@ -1945,8 +2133,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
 
                     node_id_at++;
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
                     
                     _s.nodes.resize(current_nodes_size);
@@ -1955,11 +2141,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     _s.nodes[parent.node_id] = parent;
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
-
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
                 }
             }            
        }
@@ -1969,7 +2150,7 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
         int x_from = node.x;
         int x_to = node.x + node.w - it.w;
 
-        for(int x = x_from; x <= x_to; ++x)
+        for(int x : get_possible_x_cut_positions_subdivision(it,_s.nodes[node_id],bin))
         {
             if( node.w - it.w >= min_waste &&
                 valid_x_cut(x,parent,bin) &&
@@ -2011,8 +2192,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     current_change.new_nodes.push_back(_s.nodes[node_id]);
                     current_change.node_ids.push_back(node_id);
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
                     
                     _s.nodes.resize(current_nodes_size);
@@ -2021,11 +2200,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     _s.nodes[parent.node_id] = parent;
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
-                    
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
 
                 }
                 else if(x+it.w == node.x + node.w)
@@ -2057,8 +2231,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     current_change.new_nodes.push_back(_s.nodes[node_id]);
                     current_change.node_ids.push_back(node_id);
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
     
                     _s.nodes.resize(current_nodes_size);
@@ -2067,11 +2239,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     _s.nodes[parent.node_id] = parent;
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
-
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
                 }
                 else
                 {
@@ -2121,8 +2288,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
 
                     node_id_at++;
 
-                    int placements_size = placements.size();
-
                     get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
                 
                     _s.nodes.resize(current_nodes_size);
@@ -2131,11 +2296,6 @@ void Solver::placement_try_subdivide_node(Change current_change, std::vector<Cha
                     _s.nodes[parent.node_id] = parent;
                     current_change.new_nodes.resize(current_change_size);
                     current_change.node_ids.resize(current_change_size);
-
-                    if(placements_size < placements.size())
-                    {
-                        return;
-                    }
                 }
             }
         }   
@@ -2253,6 +2413,7 @@ void Solver::solve()
                             false
                             );
             
+
             if(placements.empty())
             {
                 _batch.stacks[next.stack_id].at --;

@@ -3,6 +3,7 @@
 #include "solve.h"
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 int main()
 {
@@ -13,9 +14,17 @@ int main()
 
         Solver solver(bins,batch);
 
+
+        auto start = std::chrono::high_resolution_clock::now();
+
         solver.solve();
 
         write_solution(solver.get_solution(),"/home/peterzasz/Documents/opkutgy/dataset_B/B" + std::to_string(i) + "_solution.csv");
-        std::cout << std::to_string(i) + "th done.\n";
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        double seconds = std::chrono::duration<double>(end - start).count();
+        
+        std::cout << "Dataset " << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
     }
 }

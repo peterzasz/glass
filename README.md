@@ -116,22 +116,6 @@ The placement search is divided into several routines:
 
 Temporary modifications to the solution tree are rolled back after each speculative branch.
 
-## Current performance issue
-
-The lookahead implementation is currently experimental and can generate far too many candidate placements.
-
-For example, trying every integer coordinate on a `6000 × 3210` plate can produce millions of `(x, y)` possibilities for a single item. Evaluating every such placement with a greedy rollout is prohibitively expensive.
-
-The next major improvement is therefore to generate only **interesting candidate coordinates**, such as:
-
-- the beginning of an unused region;
-- the end of an unused region;
-- positions aligned with defects;
-- positions immediately before or after defects;
-- positions induced by existing cuts.
-
-This should reduce the candidate set from millions of placements to a much smaller collection of meaningful alternatives.
-
 ## Project status
 
 Implemented:
@@ -146,14 +130,6 @@ Implemented:
 - temporary mutation and rollback during search;
 - representation and application of candidate changes;
 - greedy rollout evaluation of candidate placements.
-
-Work in progress:
-
-- reducing the number of generated candidate positions;
-- improving placement evaluation;
-- reducing copying during rollout evaluation;
-- benchmarking different item-order and placement heuristics;
-- comparing solutions by number of plates, geometric loss, and residual width.
 
 ## Source structure
 
