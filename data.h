@@ -74,7 +74,32 @@ struct Solution
     std::vector<Node> nodes;
     std::vector<int> roots;
 
-    int root_at;
+    void add_node(int plate_id, int x, int y, int w, int h, int type, int cut_level, int parent_id, bool root)
+    {
+        int node_id = static_cast<int>(nodes.size());
+
+        nodes.push_back(Node{
+            plate_id,
+            node_id,
+            x,
+            y,
+            w,
+            h,
+            type,
+            cut_level,
+            parent_id
+        });
+
+        if(parent_id != -1)
+        {
+            nodes[parent_id].children.push_back(node_id);
+        }
+
+        if(root)
+        {
+            roots.push_back(node_id);
+        }
+    }
 };
 
 struct NextItem

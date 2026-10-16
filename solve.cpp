@@ -115,7 +115,7 @@ bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item&
     return true;
 }
 
-bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at )
+bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin )
 {
     Node node = _s.nodes[node_id];
     
@@ -153,25 +153,10 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                     {
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
 
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
+                        _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
 
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
+                        if( cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin) )
                         {
                             return true;
                         }
@@ -179,48 +164,17 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         {
                             _s.nodes.resize(nodes_size);
                             _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
                         }
                     }
                     else
                     {
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
 
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x_from,
-                            node.y,
-                            x-x_from,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
+                        _s.add_node(node.plate_id,x_from,node.y,x-x_from,node.h,-2,node.cut+1,node.node_id,false);
+                        _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
 
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            it.w,
-                            node.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
+                        if(cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin))
                         {
                             return true;
                         }
@@ -228,7 +182,6 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         {
                             _s.nodes.resize(nodes_size);
                             _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
                         }
                     }
                 }
@@ -239,7 +192,7 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
     return false;
 }
 
-bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin)
 {
     Node node = _s.nodes[node_id];
 
@@ -247,85 +200,27 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
     {
         if(node.h-it.h >= min_waste)
         {
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y,
-                node.w,
-                it.h,
-                -2,
-                4,
-                node.node_id
-            });
+            _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
+            _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
 
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            node_id_at++;
-
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y+it.h,
-                node.w,
-                node.h-it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            node_id_at++;
-
-            return cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at);
+            return cut(it,prev_item_id,prev_item_visited,_s.nodes[_s.nodes.size()-2].node_id,bin);
         }
     }
     else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
     {
         if(node.h-it.h >= min_waste)
         {
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y,
-                node.w,
-                node.h-it.h,
-                -2,
-                4,
-                node.node_id
-            });
+            _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
+            _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
 
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            node_id_at++;
-
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y+node.h-it.h,
-                node.w,
-                it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            node_id_at++;
-
-            return cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at);
+            return cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin);
         }
     }
 
     return false;
 }
 
-bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin)
 {
     Node node = _s.nodes[node_id];
 
@@ -363,25 +258,11 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                     {
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
 
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
+                        _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
+                        
 
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        if( cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at) )
+                        if( cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin) )
                         {
                             return true;
                         }
@@ -389,48 +270,17 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         {
                             _s.nodes.resize(nodes_size);
                             _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
                         }
                     }
                     else
                     {
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
-                        int current_node_id_at = node_id_at;
 
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y_from,
-                            node.w,
-                            y-y_from,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            node.plate_id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            it.h,
-                            -2,
-                            node.cut + 1,
-                            node.node_id
-                        });
-
-                        _s.nodes[node_id].children.push_back(node_id_at);
-
-                        node_id_at++;
+                        _s.add_node(node.plate_id,node.x,y_from,node.w,y-y_from,-2,node.cut+1,node.node_id,false);
+                        _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
                         
-                        if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at))
+                        if(cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin))
                         {
                             return true;
                         }
@@ -438,7 +288,6 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         {
                             _s.nodes.resize(nodes_size);
                             _s.nodes[node_id].children.resize(children_size);
-                            node_id_at = current_node_id_at;
                         }
                     }
                 }
@@ -449,7 +298,7 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
     return false;
 }
 
-bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin)
 {
     Node node = _s.nodes[node_id];
 
@@ -487,7 +336,7 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
     {
         for(auto ch : node.children)
         {
-            if(cut(it,prev_item_id, prev_item_visited, ch, bin, node_id_at))
+            if(cut(it,prev_item_id, prev_item_visited, ch, bin))
             {
                 return true;
             }
@@ -508,22 +357,22 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
 
     if(node.cut % 2 == 0)
     {
-        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin);
     }
     else
     {
         if(node.cut == 3)
         {
-            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin);
         }
         
-        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
+        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin);
     }
 
     return false;
 }
 
-void Solver::set_waste(int node_id, int& node_id_at)
+void Solver::set_waste(int node_id)
 {
     Node node = _s.nodes[node_id];
 
@@ -538,7 +387,7 @@ void Solver::set_waste(int node_id, int& node_id_at)
     {
         for( auto n_id : node.children )
         {
-            set_waste(n_id,node_id_at);
+            set_waste(n_id);
         }
 
         if(node.cut%2 == 0)
@@ -548,21 +397,7 @@ void Solver::set_waste(int node_id, int& node_id_at)
 
             if(begin < end)
             {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    begin,
-                    node.y,
-                    end-begin,
-                    node.h,
-                    -1,
-                    node.cut + 1,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
+                _s.add_node(node.plate_id,begin,node.y,end-begin,node.h,-1,node.cut+1,node.node_id,false);
             }
         }
         else
@@ -572,21 +407,7 @@ void Solver::set_waste(int node_id, int& node_id_at)
 
             if(begin < end)
             {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    begin,
-                    node.w,
-                    end-begin,
-                    -1,
-                    node.cut + 1,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
+                _s.add_node(node.plate_id,node.x,begin,node.w,end-begin,-1,node.cut+1,node.node_id,false);
             }
         }
     }
@@ -608,26 +429,10 @@ NextItem Solver::next_item()
 
 void Solver::solve()
 {
-    int node_id_at = 0;
-
     for(auto& bin: _bins)
     {
         // add root node
-        _s.nodes.push_back(Node{
-            bin.id,         // bin id
-            node_id_at,     // node id
-            0,              // x
-            0,              // y
-            bin.w,          // w
-            bin.h,          // h
-            -2,             // branch
-            0,              // cut type
-            -1              // no parent
-        });
-
-        _s.roots.push_back(node_id_at);
-
-        node_id_at++;
+        _s.add_node(bin.id,0,0,bin.w,bin.h,-2,0,-1,true);
 
         NextItem next = next_item();
 
@@ -639,8 +444,7 @@ void Solver::solve()
                                    _batch.stacks[next.stack_id].prev_item, // previous item id
                                    prev_item_visited, // false
                                    _s.roots.back(), // starting node id = current root
-                                   bin, // current bin used
-                                   node_id_at
+                                   bin // current bin used
             );
 
             if(!can_be_cut)
@@ -675,7 +479,7 @@ void Solver::solve()
         }
     }
 
-    for(auto root : _s.roots) set_waste(root,node_id_at);
+    for(auto root : _s.roots) set_waste(root);
 
     if( _s.nodes[_s.nodes[_s.roots.back()].children.back()].type == -1 )
     {
