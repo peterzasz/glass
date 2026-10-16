@@ -17,6 +17,7 @@ class Solver
         Batch _batch;
         Solution _s;
 
+        
         bool defect_in_node(const Node& node, const Defect& defect) const;
         bool item_in_node(const Node& node, int x, int y, const Item& it) const;
         bool item_touches_defect(int x, int y, const Item& it, const Defect& defect) const;

@@ -82,10 +82,15 @@ struct NextItem
     int sequence;
 };
 
+struct NodeChange
+{
+    int node_id;
+    Node new_node;
+};
+
 struct Change
 {
-    std::vector<int> node_ids;
-    std::vector<Node> new_nodes;
+    std::vector<NodeChange> updates;
 };
 
 
