@@ -74,7 +74,7 @@ struct Solution
     std::vector<Node> nodes;
     std::vector<int> roots;
 
-    void add_node(int plate_id, int x, int y, int w, int h, int type, int cut_level, int parent_id, bool root)
+    int add_node(int plate_id, int x, int y, int w, int h, int type, int cut_level, int parent_id, bool root)
     {
         int node_id = static_cast<int>(nodes.size());
 
@@ -99,6 +99,8 @@ struct Solution
         {
             roots.push_back(node_id);
         }
+
+        return node_id;
     }
 };
 

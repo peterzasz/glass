@@ -154,9 +154,9 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
 
-                        _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
+                        int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
 
-                        if( cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin) )
+                        if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
                         {
                             return true;
                         }
@@ -172,9 +172,9 @@ bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visit
                         int children_size = _s.nodes[node_id].children.size();
 
                         _s.add_node(node.plate_id,x_from,node.y,x-x_from,node.h,-2,node.cut+1,node.node_id,false);
-                        _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
+                        int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
 
-                        if(cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin))
+                        if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
                         {
                             return true;
                         }
@@ -200,10 +200,10 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
     {
         if(node.h-it.h >= min_waste)
         {
-            _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
+            int child_id = _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
             _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
 
-            return cut(it,prev_item_id,prev_item_visited,_s.nodes[_s.nodes.size()-2].node_id,bin);
+            return cut(it,prev_item_id,prev_item_visited,child_id,bin);
         }
     }
     else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
@@ -211,9 +211,9 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
         if(node.h-it.h >= min_waste)
         {
             _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
-            _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
+            int child_id = _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
 
-            return cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin);
+            return cut(it,prev_item_id,prev_item_visited,child_id,bin);
         }
     }
 
@@ -259,10 +259,10 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         int nodes_size = _s.nodes.size();
                         int children_size = _s.nodes[node_id].children.size();
 
-                        _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
+                        int child_id = _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
                         
 
-                        if( cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin) )
+                        if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
                         {
                             return true;
                         }
@@ -278,9 +278,9 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
                         int children_size = _s.nodes[node_id].children.size();
 
                         _s.add_node(node.plate_id,node.x,y_from,node.w,y-y_from,-2,node.cut+1,node.node_id,false);
-                        _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
+                        int child_id = _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
                         
-                        if(cut(it,prev_item_id,prev_item_visited,_s.nodes.back().node_id,bin))
+                        if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
                         {
                             return true;
                         }
