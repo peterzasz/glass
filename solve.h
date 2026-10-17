@@ -24,6 +24,9 @@ class Solver
         bool item_touches_defect(int x, int y, const Item& it, const Defect& defect) const;
         bool x_cut_touches_defect(int x, const Defect& defect) const;
         bool y_cut_touches_defect(int y, const Defect& defect) const;
+        bool valid_x_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const;
+        bool valid_y_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const;
+        bool valid_4_cut(int node_h, int it_h) const;
 
         bool cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin);
         bool try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin);

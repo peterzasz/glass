@@ -2,189 +2,48 @@
 #include "data.h"
 #include <iostream>
 
-constexpr int min_1_cut = 100;
-constexpr int max_1_cut = 3500;
-constexpr int min_2_cut = 100;
-constexpr int min_waste = 20;
-
 Solver::Solver(const std::vector<Bin>& bins, const Batch& batch) : _bins(bins), _batch(batch) {}
-
-bool Solver::defect_in_node(const Node& node, const Defect& defect) const
-{
-    return node.x <= defect.x &&
-           node.y <= defect.y && 
-           defect.x + defect.w <= node.x + node.w &&
-           defect.y + defect.h <= node.y + node.h;
-}
-
-bool Solver::item_in_node(const Node& node, int x, int y, const Item& it) const
-{
-    return node.x <= x &&
-           node.y <= y &&
-           x + it.w <= node.x + node.w &&
-           y + it.h <= node.y + node.h;
-}
-
-bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& defect) const
-{
-    return x < defect.x + defect.w &&
-           y < defect.y + defect.h &&
-           defect.x < x + it.w &&
-           defect.y < y + it.h;
-}
-
-bool Solver::x_cut_touches_defect(int x, const Defect& defect) const
-{
-    return defect.x < x && x < defect.x + defect.w;
-}
-
-bool Solver::y_cut_touches_defect(int y, const Defect& defect) const
-{
-    return defect.y < y && y < defect.y + defect.h;
-}
-
-bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
-{
-    if(!item_in_node(node,x,y,it))
-    {
-        return false;
-    }
-
-    std::vector<Defect> defects;
-
-    for(const auto& defect : bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            defects.push_back(defect);
-        }
-    }
-
-    for(const auto& defect : defects)
-    {
-        if(item_touches_defect(x,y,it,defect))
-        {
-            return false;
-        }
-    }
-
-    if(node.cut == 4)
-    {
-        if(it.w == node.w && it.h == node.h)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    if( node.cut%2 == 0 )
-    {
-        for(const auto& defect : defects)
-        {
-            if(x_cut_touches_defect( x, defect ) || x_cut_touches_defect( x + it.w, defect ))
-            {
-                return false;
-            }
-        }
-    }
-    else
-    {
-        for(const auto& defect : defects)
-        {
-            if(y_cut_touches_defect( y, defect ) || y_cut_touches_defect( y + it.h, defect ))
-            {
-                return false;
-            }
-        }
-    }
-
-    if( node.cut == 3 )
-    {
-        if( node.x != x || node.x + node.w != x + it.w )
-        {
-            return false;
-        }
-
-        if( node.y != y && node.y + node.h != y + it.h )
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
 
 bool Solver::try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin )
 {
     Node node = _s.nodes[node_id];
-    
-    int x_from, y_from, x_to, y_to;
 
-    if(node.children.empty())
-    {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
-    else
-    {
-        x_from = _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
+    int x_from = node.children.empty() ? node.x : _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
+    int x_to = node.x + node.w - it.w;
+    int y_from = node.y;
+    int y_to = node.y + node.h - it.h;
 
     for(int x = x_from; x <= x_to; ++x)
     {
         for(int y = y_from; y <= y_to; ++y)
         {
-            if(!((x > x_from && x - x_from < min_waste) ||
-                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
-                    (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
-                    (node.cut == 0 && x > x_from && (x-x_from < min_1_cut || x-x_from > max_1_cut))
-                ))
+            if(valid_x_cut(x,y,x_from,y_from,node,it) && can_cut(bin,node,x,y,it))
             {
-                if(can_cut(bin,node,x,y,it))
+                int nodes_size = _s.nodes.size();
+                int children_size = _s.nodes[node_id].children.size();
+
+                if(x == x_from)
                 {
-                    if(x == x_from)
+                    int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
+
+                    if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
                     {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-
-                        int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
-
-                        if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                        }
-                    }
-                    else
-                    {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-
-                        _s.add_node(node.plate_id,x_from,node.y,x-x_from,node.h,-2,node.cut+1,node.node_id,false);
-                        int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
-
-                        if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                        }
+                        return true;
                     }
                 }
+                else
+                {
+                    _s.add_node(node.plate_id,x_from,node.y,x-x_from,node.h,-2,node.cut+1,node.node_id,false);
+                    int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
+
+                    if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
+                    {
+                        return true;
+                    }
+                }
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(children_size);
             }
         }
     }
@@ -196,25 +55,19 @@ bool Solver::try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int 
 {
     Node node = _s.nodes[node_id];
 
-    if(can_cut(bin,node,node.x,node.y,it))
+    if(can_cut(bin,node,node.x,node.y,it) && valid_4_cut(node.h,it.h))
     {
-        if(node.h-it.h >= min_waste)
-        {
-            int child_id = _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
-            _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
+        int child_id = _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
+        _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
 
-            return cut(it,prev_item_id,prev_item_visited,child_id,bin);
-        }
+        return cut(it,prev_item_id,prev_item_visited,child_id,bin);
     }
-    else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it))
+    else if(can_cut(bin,node,node.x,node.y+node.h-it.h,it) && valid_4_cut(node.h,it.h))
     {
-        if(node.h-it.h >= min_waste)
-        {
-            _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
-            int child_id = _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
+        _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
+        int child_id = _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
 
-            return cut(it,prev_item_id,prev_item_visited,child_id,bin);
-        }
+        return cut(it,prev_item_id,prev_item_visited,child_id,bin);
     }
 
     return false;
@@ -224,73 +77,46 @@ bool Solver::try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visi
 {
     Node node = _s.nodes[node_id];
 
-    int x_from, y_from, x_to, y_to;
-
-    if(node.children.empty())
-    {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = node.y;
-        y_to = node.y + node.h - it.h;
-    }
-    else
-    {
-        x_from = node.x;
-        x_to = node.x + node.w - it.w;
-        y_from = _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
-        y_to = node.y + node.h - it.h;
-    }
+    int x_from = node.x;
+    int x_to = node.x + node.w - it.w;
+    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
+    int y_to = node.y + node.h - it.h;
 
     for(int y = y_from; y <= y_to; ++y)
     {
         for(int x = x_from; x <= x_to; ++x)
         {
-            if(!((x > x_from && x - x_from < min_waste) ||
-                    (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
-                    (y > y_from && y - y_from < min_waste) ||
-                    (y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) ||
-                    (node.cut == 1 && y > y_from && y-y_from < min_2_cut)
-                ))
+            if(valid_y_cut(x,y,x_from,y_from,node,it) && can_cut(bin,node,x,y,it))
             {
-                if(can_cut(bin,node,x,y,it))
+                int nodes_size = _s.nodes.size();
+                int children_size = _s.nodes[node_id].children.size();
+
+                if(y == y_from)
                 {
-                    if(y == y_from)
+                    int child_id = _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
+                    
+
+                    if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
                     {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-
-                        int child_id = _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
-                        
-
-                        if( cut(it,prev_item_id,prev_item_visited,child_id,bin) )
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                        }
-                    }
-                    else
-                    {
-                        int nodes_size = _s.nodes.size();
-                        int children_size = _s.nodes[node_id].children.size();
-
-                        _s.add_node(node.plate_id,node.x,y_from,node.w,y-y_from,-2,node.cut+1,node.node_id,false);
-                        int child_id = _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
-                        
-                        if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(nodes_size);
-                            _s.nodes[node_id].children.resize(children_size);
-                        }
+                        return true;
                     }
                 }
+                else
+                {
+                    int nodes_size = _s.nodes.size();
+                    int children_size = _s.nodes[node_id].children.size();
+
+                    _s.add_node(node.plate_id,node.x,y_from,node.w,y-y_from,-2,node.cut+1,node.node_id,false);
+                    int child_id = _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
+                    
+                    if(cut(it,prev_item_id,prev_item_visited,child_id,bin))
+                    {
+                        return true;
+                    }
+                }
+
+                _s.nodes.resize(nodes_size);
+                _s.nodes[node_id].children.resize(children_size);
             }
         }
     }
