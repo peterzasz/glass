@@ -1,4 +1,4 @@
-#include "cuter.h"
+#include "cutter.h"
 #include "data.h"
 
 bool Cutter::fast_try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
