@@ -13,7 +13,7 @@ enum class CutMethod
 class Cutter
 {
     public:
-        Cutter(Solution& s, const Bin& bin, const CutMethod method) : _s(s), _bin(bin), _method(method) {}
+        Cutter(Solution& s, const Bin& bin, CutMethod method) : _s(s), _bin(bin), _method(method) {}
 
         bool cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
         {

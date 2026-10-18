@@ -1,6 +1,8 @@
 #include "cutter.h"
 #include "data.h"
 
+// Fast cut method 
+
 bool Cutter::fast_try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
 {
     Node node = _s.nodes[node_id];
@@ -192,5 +194,15 @@ bool Cutter::fast_cut(Item& it, int prev_item_id, bool& prev_item_visited, int n
         return fast_try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id);
     }
 
+    return false;
+}
+
+
+
+// Rotations cut method
+
+bool Cutter::rotation_cut()
+{
+    // implementation
     return false;
 }

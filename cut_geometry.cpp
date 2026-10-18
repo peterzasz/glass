@@ -1,12 +1,13 @@
 #include "solve.h"
 #include "data.h"
+#include "cutter.h"
 
 constexpr int min_1_cut = 100;
 constexpr int max_1_cut = 3500;
 constexpr int min_2_cut = 100;
 constexpr int min_waste = 20;
 
-bool Solver::defect_in_node(const Node& node, const Defect& defect) const
+bool Cutter::defect_in_node(const Node& node, const Defect& defect) const
 {
     return node.x <= defect.x &&
            node.y <= defect.y && 
@@ -14,7 +15,7 @@ bool Solver::defect_in_node(const Node& node, const Defect& defect) const
            defect.y + defect.h <= node.y + node.h;
 }
 
-bool Solver::item_in_node(const Node& node, int x, int y, const Item& it) const
+bool Cutter::item_in_node(const Node& node, int x, int y, const Item& it) const
 {
     return node.x <= x &&
            node.y <= y &&
@@ -22,7 +23,7 @@ bool Solver::item_in_node(const Node& node, int x, int y, const Item& it) const
            y + it.h <= node.y + node.h;
 }
 
-bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& defect) const
+bool Cutter::item_touches_defect(int x, int y, const Item& it, const Defect& defect) const
 {
     return x < defect.x + defect.w &&
            y < defect.y + defect.h &&
@@ -30,17 +31,17 @@ bool Solver::item_touches_defect(int x, int y, const Item& it, const Defect& def
            defect.y < y + it.h;
 }
 
-bool Solver::x_cut_touches_defect(int x, const Defect& defect) const
+bool Cutter::x_cut_touches_defect(int x, const Defect& defect) const
 {
     return defect.x < x && x < defect.x + defect.w;
 }
 
-bool Solver::y_cut_touches_defect(int y, const Defect& defect) const
+bool Cutter::y_cut_touches_defect(int y, const Defect& defect) const
 {
     return defect.y < y && y < defect.y + defect.h;
 }
 
-bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
+bool Cutter::can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it)
 {
     if(!item_in_node(node,x,y,it))
     {
@@ -102,7 +103,7 @@ bool Solver::can_cut(const Bin& bin, const Node& node, int x, int y, const Item&
     return true;
 }
 
-bool Solver::valid_x_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const
+bool Cutter::valid_x_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const
 {
     return !(   (x > x_from && x - x_from < min_waste) ||
                 (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
@@ -112,7 +113,7 @@ bool Solver::valid_x_cut(int x, int y, int x_from, int y_from, const Node& node,
             );
 }
 
-bool Solver::valid_y_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const
+bool Cutter::valid_y_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const
 {
     return !(   (x > x_from && x - x_from < min_waste) ||
                 (x + it.w < node.x + node.w && node.x+node.w-x-it.w < min_waste) ||
@@ -122,7 +123,7 @@ bool Solver::valid_y_cut(int x, int y, int x_from, int y_from, const Node& node,
             );
 }
 
-bool Solver::valid_4_cut(int node_h, int it_h) const
+bool Cutter::valid_4_cut(int node_h, int it_h) const
 {
     return node_h-it_h >= min_waste;
 }
