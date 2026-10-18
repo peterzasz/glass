@@ -3,23 +3,18 @@
 
 #include <vector>
 
-// Basic structures
-
 struct Item
 {
     int w;
     int h;
-
     int id;
 };
 
 struct Stack
 {
-    std::vector<int> item_ids; // in order
-
+    std::vector<int> item_ids;
     int id;
-
-    int at = 0; // next item to finish
+    int at = 0;
     int prev_item = -1;
     bool can_cut = true;
 };
@@ -36,7 +31,6 @@ struct Defect
     int y;
     int w;
     int h;
-
     int id;
     int plate_id;
 };
@@ -45,28 +39,22 @@ struct Bin
 {
     int w;
     int h;
-
     std::vector<Defect> defects;
-
     int id;
 };
 
-// Structures for solution
 struct Node
 {
     int plate_id;
     int node_id;
-
     int x;
     int y;
     int w;
     int h;
-
-    int type;     // >= 0 item id, -1 waste, -2 branch, -3 residual
-    int cut;      // 0, 1, 2, 3, 4
-    int parent;   // -1 means no parent/root
-
-    std::vector<int> children; // left to right, bottom to top
+    int type;   // >= 0 item id, -1 waste, -2 branch, -3 residual
+    int cut;    // 0, 1, 2, 3, 4
+    int parent; // -1 means root
+    std::vector<int> children;
 };
 
 struct Solution
@@ -74,9 +62,19 @@ struct Solution
     std::vector<Node> nodes;
     std::vector<int> roots;
 
-    int add_node(int plate_id, int x, int y, int w, int h, int type, int cut_level, int parent_id, bool root)
+    int add_node(
+        int plate_id,
+        int x,
+        int y,
+        int w,
+        int h,
+        int type,
+        int cut_level,
+        int parent_id,
+        bool root,
+        int child_position = -1)
     {
-        int node_id = static_cast<int>(nodes.size());
+        const int node_id = static_cast<int>(nodes.size());
 
         nodes.push_back(Node{
             plate_id,
@@ -87,12 +85,22 @@ struct Solution
             h,
             type,
             cut_level,
-            parent_id
+            parent_id,
+            {}
         });
 
         if(parent_id != -1)
         {
-            nodes[parent_id].children.push_back(node_id);
+            auto& children = nodes[parent_id].children;
+
+            if(child_position >= 0 && child_position <= static_cast<int>(children.size()))
+            {
+                children.insert(children.begin() + child_position, node_id);
+            }
+            else
+            {
+                children.push_back(node_id);
+            }
         }
 
         if(root)

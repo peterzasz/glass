@@ -1,990 +1,272 @@
 #include "cutter.h"
-#include "data.h"
 
-// Fast cut method 
+#include <algorithm>
+#include <utility>
 
-bool Cutter::fast_try_vertical_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
+// -----------------------------------------------------------------------------
+// Cutter: fast method
+// -----------------------------------------------------------------------------
+
+bool Cutter::fast_try_vertical_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
 {
-    Node node = _s.nodes[node_id];
+    const Node node = _s.nodes[node_id];
 
-    int x_from = node.children.empty() ? node.x : _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
-    int x_to = node.x + node.w - it.w;
-    int y_from = node.y;
-    int y_to = node.y + node.h - it.h;
+    const int x_from = node.children.empty()
+        ? node.x
+        : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+
+    const int x_to = node.x + node.w - item.w;
+    const int y_from = node.y;
+    const int y_to = node.y + node.h - item.h;
 
     for(int x = x_from; x <= x_to; ++x)
     {
         for(int y = y_from; y <= y_to; ++y)
         {
-            if(valid_x_cut(x,y,x_from,y_from,node,it) && can_cut(_bin,node,x,y,it))
+            if(!valid_x_cut(x, y, x_from, y_from, node, item) ||
+               !can_cut(node, x, y, item))
             {
-                int nodes_size = _s.nodes.size();
-                int children_size = _s.nodes[node_id].children.size();
-
-                if(x == x_from)
-                {
-                    int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
-
-                    if( fast_cut(it,prev_item_id,prev_item_visited,child_id) )
-                    {
-                        return true;
-                    }
-                }
-                else
-                {
-                    _s.add_node(node.plate_id,x_from,node.y,x-x_from,node.h,-2,node.cut+1,node.node_id,false);
-                    int child_id = _s.add_node(node.plate_id,x,node.y,it.w,node.h,-2,node.cut+1,node.node_id,false);
-
-                    if(cut(it,prev_item_id,prev_item_visited,child_id))
-                    {
-                        return true;
-                    }
-                }
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(children_size);
+                continue;
             }
+
+            const std::size_t nodes_size = _s.nodes.size();
+            const std::size_t children_size = _s.nodes[node_id].children.size();
+
+            int child_id;
+
+            if(x == x_from)
+            {
+                child_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+            else
+            {
+                _s.add_node(
+                    node.plate_id,
+                    x_from,
+                    node.y,
+                    x - x_from,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+
+                child_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+
+            if(fast_cut(item, prev_item_id, prev_item_visited, child_id))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id].children.resize(children_size);
         }
     }
 
     return false;
 }
 
-bool Cutter::fast_try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
+bool Cutter::fast_try_horizontal_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
 {
-    Node node = _s.nodes[node_id];
+    const Node node = _s.nodes[node_id];
 
-    if(can_cut(_bin,node,node.x,node.y,it) && valid_4_cut(node.h,it.h))
-    {
-        int child_id = _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
-        _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
+    const int x_from = node.x;
+    const int x_to = node.x + node.w - item.w;
 
-        return fast_cut(it,prev_item_id,prev_item_visited,child_id);
-    }
-    else if(can_cut(_bin,node,node.x,node.y+node.h-it.h,it) && valid_4_cut(node.h,it.h))
-    {
-        _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
-        int child_id = _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
+    const int y_from = node.children.empty()
+        ? node.y
+        : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
 
-        return fast_cut(it,prev_item_id,prev_item_visited,child_id);
-    }
-
-    return false;
-}
-
-bool Cutter::fast_try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
-{
-    Node node = _s.nodes[node_id];
-
-    int x_from = node.x;
-    int x_to = node.x + node.w - it.w;
-    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
-    int y_to = node.y + node.h - it.h;
+    const int y_to = node.y + node.h - item.h;
 
     for(int y = y_from; y <= y_to; ++y)
     {
         for(int x = x_from; x <= x_to; ++x)
         {
-            if(valid_y_cut(x,y,x_from,y_from,node,it) && can_cut(_bin,node,x,y,it))
+            if(!valid_y_cut(x, y, x_from, y_from, node, item) ||
+               !can_cut(node, x, y, item))
             {
-                int nodes_size = _s.nodes.size();
-                int children_size = _s.nodes[node_id].children.size();
-
-                if(y == y_from)
-                {
-                    int child_id = _s.add_node(node.plate_id, node.x, y, node.w, it.h, -2, node.cut + 1, node.node_id, false);
-                    
-
-                    if( fast_cut(it,prev_item_id,prev_item_visited,child_id) )
-                    {
-                        return true;
-                    }
-                }
-                else
-                {
-                    int nodes_size = _s.nodes.size();
-                    int children_size = _s.nodes[node_id].children.size();
-
-                    _s.add_node(node.plate_id,node.x,y_from,node.w,y-y_from,-2,node.cut+1,node.node_id,false);
-                    int child_id = _s.add_node(node.plate_id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
-                    
-                    if(fast_cut(it,prev_item_id,prev_item_visited,child_id))
-                    {
-                        return true;
-                    }
-                }
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(children_size);
+                continue;
             }
+
+            const std::size_t nodes_size = _s.nodes.size();
+            const std::size_t children_size = _s.nodes[node_id].children.size();
+
+            int child_id;
+
+            if(y == y_from)
+            {
+                child_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+            else
+            {
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y_from,
+                    node.w,
+                    y - y_from,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+
+                child_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+
+            if(fast_cut(item, prev_item_id, prev_item_visited, child_id))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id].children.resize(children_size);
         }
     }
 
     return false;
 }
 
-bool Cutter::fast_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id)
+bool Cutter::fast_try_4_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
 {
-    Node node = _s.nodes[node_id];
+    const Node node = _s.nodes[node_id];
+
+    if(can_cut(node, node.x, node.y, item) && valid_4_cut(node.h, item.h))
+    {
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y + item.h,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        return fast_cut(item, prev_item_id, prev_item_visited, child_id);
+    }
+
+    const int top_y = node.y + node.h - item.h;
+
+    if(can_cut(node, node.x, top_y, item) && valid_4_cut(node.h, item.h))
+    {
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            top_y,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        return fast_cut(item, prev_item_id, prev_item_visited, child_id);
+    }
+
+    return false;
+}
+
+bool Cutter::fast_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
 
     if(prev_item_id == -1 || node.type == prev_item_id)
     {
         prev_item_visited = true;
     }
 
-    //check if node is a branch
     if(node.type != -2)
     {
         return false;
     }
 
-    //check if node is the same size as item
-    if(it.w == node.w && it.h == node.h)
+    if(item.w == node.w && item.h == node.h)
     {
         if(!node.children.empty())
         {
             return false;
         }
 
-        if(prev_item_visited && can_cut(_bin,node,node.x,node.y,it))
+        if(prev_item_visited && can_cut(node, node.x, node.y, item))
         {
-            _s.nodes[node_id].type = it.id;
-
-            return true;
-        }
-
-        return false;
-    }
-
-    // try to cut in descendant of node
-    if(!node.children.empty())
-    {
-        for(auto ch : node.children)
-        {
-            if(fast_cut(it,prev_item_id, prev_item_visited, ch))
-            {
-                return true;
-            }
-        }
-
-        if(node.cut == 3)
-        {
-            return false;
-        }
-    }
-
-    
-    // try to cut new part out of this node
-    if(!prev_item_visited)
-    {
-        return false;
-    }
-
-    if(node.cut % 2 == 0)
-    {
-        return fast_try_vertical_cut(it, prev_item_id, prev_item_visited, node_id);
-    }
-    else
-    {
-        if(node.cut == 3)
-        {
-            return fast_try_4_cut(it, prev_item_id, prev_item_visited, node_id);
-        }
-        
-        return fast_try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id);
-    }
-
-    return false;
-}
-
-
-
-// Rotations cut method
-
-bool Cutter::rotation_cut()
-{
-    // implementation
-    return false;
-}
-
-
-bool Cutter::rotation_try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked )
-{
-    Node node = _s.nodes[node_id];
-    
-
-    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
-    int y_to = node.y + node.h - std::min(it.w,it.h);
-
-    for(int y = y_from; y <= y_to; ++y)
-    {
-        if(passes_min_waste_constraint(y,y_from))
-        {
-            if( rotations_valid_y_cut(node,it,y) )
-            {
-                int nodes_size = _s.nodes.size();
-                int node_children_size = node.children.size();
-
-                int child_id;
-
-                if(y == y_from)
-                {
-                    child_id = _s.add_node(_bin.id,node.x,y,node.w,it.h,-2,node.cut+1,node.node_id,false);
-                }
-                else
-                {
-                    _s.add_node(_bin.id,node.x,y_from, node.w, y-y_from,-2,node.cut+1,node.node_id,false);
-
-                    child_id = _s.add_node(_bin.id,node.x,y,node.w,it.h,-2,node.cut + 1,node.node_id, false);
-                }
-
-                if(rotation_cut(it,prev_item_id,prev_item_visited,child_id,true))
-                {
-                    return true;
-                }
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(node_children_size);
-            }
-
-            if( !orientation_locked && it.w != it.h )
-            {
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
-
-                if( rotations_valid_y_cut(node,rotated,y) )
-                {
-                    int nodes_size = _s.nodes.size();
-                    int node_children_size = node.children.size();
-
-                    int child_id;
-
-                    if(y == y_from)
-                    {
-                        child_id = _s.add_node(_bin.id,node.x,y,node.w,rotated.h,-2,node.cut + 1,node.node_id,false);
-                    }
-                    else
-                    {
-                        _s.add_node(_bin.id,node.x,y_from,node.w,y-y_from,-2,node.cut + 1,node.node_id,false);
-                        _s.add_node(_bin.id,node.x,y,node.w,rotated.h,-2,node.cut + 1,node.node_id,false);
-                    }
-
-                    if(rotation_cut(rotated,prev_item_id,prev_item_visited,child_id,true))
-                    {
-                        return true;
-                    }
-
-                    _s.nodes.resize(nodes_size);
-                    _s.nodes[node_id].children.resize(node_children_size);
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
-
-
-bool Cutter::rotation_try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked)
-{
-    Node node = _s.nodes[node_id];
-
-    if(it.w != node.w || it.h > node.h)
-    {
-        if(!orientation_locked)
-        {
-            Item rotated = it;
-            std::swap(rotated.h,rotated.w);
-
-            if(rotation_try_4_cut(rotated, prev_item_id, prev_item_visited,node_id,true))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    if(can_do_bottom_4_cut(_bin,node,it))
-    {
-        if(passes_4_cut_min_waste_constraint(node,it))
-        {
-            int child_id = _s.add_node(node.plate_id,node.x,node.y,node.w,it.h,-2,4,node.node_id,false);
-            _s.add_node(node.plate_id,node.x,node.y+it.h,node.w,node.h-it.h,-2,4,node.node_id,false);
-
-            return rotation_cut(it,prev_item_id,prev_item_visited,child_id,orientation_locked);
-        }
-    }
-    
-    if(can_do_top_4_cut(_bin,node,it))
-    {
-        if(passes_4_cut_min_waste_constraint(node,it))
-        {
-            _s.add_node(node.plate_id,node.x,node.y,node.w,node.h-it.h,-2,4,node.node_id,false);
-            int child_id = _s.add_node(node.plate_id,node.x,node.y+node.h-it.h,node.w,it.h,-2,4,node.node_id,false);
-
-            return rotation_cut(it,prev_item_id,prev_item_visited,child_id,orientation_locked);
-        }
-    }
-
-    return false;
-}
-
-bool Cutter::rotation_try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked)
-{
-    Node node = _s.nodes[node_id];
-
-    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
-    int x_to = node.x + node.w - std::min(it.w,it.h);
-
-    for(int x = x_from; x <= x_to; ++x)
-    {
-        if(passes_min_waste_constraint(x,x_from))
-        {
-            if( rotations_valid_x_cut(node,it,x,x_from) )
-            {
-
-
-                int nodes_size = _s.nodes.size();
-                int node_children_size = node.children.size();
-
-                int child_id;
-
-                if(x == x_from)
-                {
-                    child_id = _s.add_node(_bin.id,x,node.y,it.w,node.h,-2,node.cut + 1,node.node_id,false);
-                }
-                else
-                {
-                    _s.add_node(_bin.id,x_from,node.y,x-x_from,node.h,-2,node.cut + 1,node.node_id, false);
-                    child_id = _s.add_node(_bin.id,x,node.y,it.w,node.h,-2,node.cut + 1,node.node_id,false);
-                }
-
-                if(rotation_cut(it,prev_item_id,prev_item_visited,child_id,true))
-                {
-                    return true;
-                }
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(node_children_size);
-            }
-
-            if( !orientation_locked && it.w != it.h )
-            {
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
-
-                if( rotations_valid_x_cut(node,rotated,x,x_from) )
-                {
-                    int nodes_size = _s.nodes.size();
-                    int node_children_size = node.children.size();
-
-                    int child_id;
-
-                    if(x == x_from)
-                    {
-                        child_id = _s.add_node(_bin.id,x,node.y,rotated.w,node.h,-2,node.cut+1,node.node_id,false);
-                    }
-                    else
-                    {
-                        _s.add_node(_bin.id,x_from,node.y,x-x_from,node.h,-2,node.cut + 1,node.node_id,false);
-                        child_id = _s.add_node(_bin.id,x,node.y,rotated.w,node.h,-2,node.cut + 1,node.node_id,false);
-                    }
-
-                    if(rotation_cut(rotated,prev_item_id,prev_item_visited,child_id,true))
-                    {
-                        return true;
-                    }
-
-                    _s.nodes.resize(nodes_size);
-                    _s.nodes[node_id].children.resize(node_children_size);
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
-bool Cutter::rotation_try_subdivide_node(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked)
-{
-    Node node = _s.nodes[node_id];
-    Node parent = _s.nodes[_s.nodes[node_id].parent];
-
-
-    int child_index = -1;
-    for(int i = 0; i < parent.children.size(); ++i)
-    {
-        if(parent.children[i] == node.node_id)
-        {
-            child_index = i;
-            break;
-        }
-    }
-
-    if(node.cut%2 == 0)
-    {
-        int y_from = node.y;
-        int y_to = node.y + node.h - std::min(it.h,it.w);
-
-        for(int y = y_from; y <= y_to; ++y)
-        {
-            if( node.h - it.h >= min_waste &&
-                y_cut_touches_any_defect(y,parent,_bin) &&
-                y_cut_touches_any_defect(y + it.h,parent,_bin) &&
-                !(y>y_from && y-y_from < min_waste) &&
-                !(y+it.h < node.y+node.h && node.y+node.h-y-it.h < min_waste) &&
-                y+it.h <= node.y + node.h &&
-                !(node.cut == 2 && it.h < min_2_cut))
-            {
-                int current_nodes_size = _s.nodes.size();
-                int current_node_id_at = node_id_at;
-
-                if( y == y_from )
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y + it.h,
-                        node.w,
-                        node.h-it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].h = it.h;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-                else if(y+it.h == node.y + node.h)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].h = node.h-it.h;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-                else
-                {
-                     _s.nodes[node_id].h = y-node.y;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y+it.h,
-                        node.w,
-                        node.y + node.h - y - it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                    node_id_at++;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-            }
-            
-            if(!orientation_locked && it.w != it.h)
-            {
-                
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
-
-                if( node.h - rotated.h >= min_waste && 
-                    valid_y_cut(y,parent,bin) &&
-                    valid_y_cut(y + rotated.h,parent,bin) &&
-                    !(y>y_from && y-y_from < min_waste) &&
-                    !(y+rotated.h < node.y+node.h && node.y+node.h-y-rotated.h < min_waste) &&
-                    y+rotated.h <= node.y + node.h &&
-                    !(node.cut == 2 && rotated.h < min_2_cut))
-                {
-                    int current_nodes_size = _s.nodes.size();
-                    int current_node_id_at = node_id_at;
-
-                    if( y == y_from )
-                    {
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            node.x,
-                            y + rotated.h,
-                            node.w,
-                            node.h-rotated.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes[node_id].h = rotated.h;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                    else if(y+rotated.h == node.y + node.h)
-                    {
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            rotated.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes[node_id].h = node.h-rotated.h;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                    else
-                    {
-                        _s.nodes[node_id].h = y-node.y;
-
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            node.x,
-                            y,
-                            node.w,
-                            rotated.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            node.x,
-                            y+rotated.h,
-                            node.w,
-                            node.y + node.h - y - rotated.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                        node_id_at++;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        int x_from = node.x;
-        int x_to = node.x + node.w - std::min(it.w,it.h);
-
-        for(int x = x_from; x <= x_to; ++x)
-        {
-            if( node.w - it.w >= min_waste &&
-                valid_x_cut(x,parent,bin) &&
-                valid_x_cut(x + it.w,parent,bin) &&
-                !(x>x_from && x-x_from < min_waste) &&
-                !(x+it.w < node.x+node.w && node.x+node.w-x-it.w < min_waste) &&
-                x + it.w <= node.x + node.w &&
-                !(node.cut == 1 && (it.w < min_1_cut || it.w > max_1_cut)))
-            {
-                int current_nodes_size = _s.nodes.size();
-                int current_node_id_at = node_id_at;
-
-                if( x == x_from )
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x+it.w,
-                        node.y,
-                        node.w-it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].w = it.w;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-                else if(x+it.w == node.x + node.w)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].w = node.w-it.w;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-                else
-                {
-                     _s.nodes[node_id].w = x-node.x;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x+it.w,
-                        node.y,
-                        node.x + node.w -x- it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                    node_id_at++;
-
-                    if(cut(it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        _s.nodes.resize(current_nodes_size);
-                        node_id_at = current_node_id_at;
-                        _s.nodes[node_id] = node;
-                        _s.nodes[parent.node_id] = parent;
-                    }
-                }
-            }
-
-            if(!orientation_locked && it.w != it.h)
-            {
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
-
-                if( node.w - rotated.w >= min_waste &&
-                    valid_x_cut(x,parent,bin) &&
-                    valid_x_cut(x + rotated.w,parent,bin) &&
-                    !(x>x_from && x-x_from < min_waste) &&
-                    !(x+rotated.w < node.x+node.w && node.x+node.w-x-rotated.w < min_waste) &&
-                    !(node.cut == 1 && (rotated.w < min_1_cut || rotated.w > max_1_cut)) &&
-                    x + rotated.w <= node.x + node.w)
-                {
-                    int current_nodes_size = _s.nodes.size();
-                    int current_node_id_at = node_id_at;
-
-                    if( x == x_from )
-                    {
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            x+rotated.w,
-                            node.y,
-                            node.w-rotated.w,
-                            node.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes[node_id].w = rotated.w;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                    else if(x+rotated.w == node.x + node.w)
-                    {
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            rotated.w,
-                            node.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes[node_id].w = node.w-rotated.w;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                    else
-                    {
-                        _s.nodes[node_id].w = x-node.x;
-
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            x,
-                            node.y,
-                            rotated.w,
-                            node.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                        node_id_at++;
-
-                        _s.nodes.push_back(Node{
-                            bin.id,
-                            node_id_at,
-                            x+rotated.w,
-                            node.y,
-                            node.x + node.w -x- rotated.w,
-                            node.h,
-                            -2,
-                            node.cut,
-                            parent.node_id
-                        });
-
-                        _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                        node_id_at++;
-
-                        if(cut(rotated,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            _s.nodes.resize(current_nodes_size);
-                            node_id_at = current_node_id_at;
-                            _s.nodes[node_id] = node;
-                            _s.nodes[parent.node_id] = parent;
-                        }
-                    }
-                }
-            }
-        }
-
-        
-    }
-
-    return false;
-}
-
-bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
-{
-    Node node = _s.nodes[node_id];
-
-    if(prev_item_visited == false && (prev_item_id == -1 || node.type == prev_item_id))
-    {
-        prev_item_visited = true;
-    }
-
-    //check if node is a branch: at this point every node is marked either as branch or as item
-    if(node.type != -2)
-    {
-        return false;
-    }
-
-    //check if node is the same size as item
-    if( (it.w == node.w && it.h == node.h) || (!orientation_locked && it.h == node.w && it.w == node.h) )
-    {
-        if(!node.children.empty())
-        {
-            return false;
-        }
-
-        if(prev_item_visited && no_defect_in_node(node,bin))
-        {
-            _s.nodes[node_id].type = it.id;
-
+            _s.nodes[node_id].type = item.id;
             return true;
         }
 
@@ -996,12 +278,11 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         return false;
     }
 
-    // try to cut in descendant of node
     if(!node.children.empty())
     {
-        for(auto ch : node.children)
+        for(int child_id : node.children)
         {
-            if(cut(it,prev_item_id, prev_item_visited, ch, bin, node_id_at, orientation_locked))
+            if(fast_cut(item, prev_item_id, prev_item_visited, child_id))
             {
                 return true;
             }
@@ -1018,191 +299,1485 @@ bool Solver::cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_i
         return false;
     }
 
-    // try subdivide node
-    if(node.children.empty() && node.parent != -1)
-    {
-        if(try_subdivide_node(it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,orientation_locked))
-        {
-            return true;
-        }
-    }
-
-    // try to cut new part out of this node
     if(node.cut % 2 == 0)
     {
-        return try_vertical_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at,orientation_locked);
-    }
-    else
-    {
-        if(node.cut == 3)
-        {
-            return try_4_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at, orientation_locked);
-        }
-        
-        return try_horizontal_cut(it, prev_item_id, prev_item_visited, node_id, bin, node_id_at,orientation_locked);
+        return fast_try_vertical_cut(item, prev_item_id, prev_item_visited, node_id);
     }
 
-    return false;
+    if(node.cut == 3)
+    {
+        return fast_try_4_cut(item, prev_item_id, prev_item_visited, node_id);
+    }
+
+    return fast_try_horizontal_cut(item, prev_item_id, prev_item_visited, node_id);
 }
 
-void Solver::set_waste(int node_id, int& node_id_at)
+// -----------------------------------------------------------------------------
+// Cutter: rotation method
+// -----------------------------------------------------------------------------
+
+bool Cutter::rotation_try_horizontal_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
 {
-    Node node = _s.nodes[node_id];
+    const Node node = _s.nodes[node_id];
 
-    if(node.children.empty())
+    const int y_from = node.children.empty()
+        ? node.y
+        : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+
+    const int y_to = node.y + node.h - std::min(item.w, item.h);
+
+    for(int y = y_from; y <= y_to; ++y)
     {
-        if(node.type == -2)
+        if(!passes_min_waste_constraint(y, y_from))
         {
-            _s.nodes[node_id].type = -1;
-        }
-    }
-    else
-    {
-        for( auto n_id : node.children )
-        {
-            set_waste(n_id,node_id_at);
+            continue;
         }
 
-        if(node.cut%2 == 0)
+        auto try_orientation = [&](Item& candidate) -> bool
         {
-            int begin = _s.nodes[node.children.back()].x+_s.nodes[node.children.back()].w;
-            int end = node.x + node.w;
-
-            if(begin < end)
-            {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    begin,
-                    node.y,
-                    end-begin,
-                    node.h,
-                    -1,
-                    node.cut + 1,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-            }
-        }
-        else
-        {
-            int begin = _s.nodes[node.children.back()].y+_s.nodes[node.children.back()].h;
-            int end = node.y + node.h;
-
-            if(begin < end)
-            {
-                _s.nodes.push_back(Node{
-                    node.plate_id,
-                    node_id_at,
-                    node.x,
-                    begin,
-                    node.w,
-                    end-begin,
-                    -1,
-                    node.cut + 1,
-                    node.node_id
-                });
-
-                _s.nodes[node_id].children.push_back(node_id_at);
-
-                node_id_at++;
-            }
-        }
-    }
-}
-
-NextItem Solver::next_item()
-{
-    for( int i = 0; i < _batch.stacks.size(); ++i )
-    {
-        if( _batch.stacks[_batch.order[i]].can_cut && _batch.stacks[_batch.order[i]].at < _batch.stacks[_batch.order[i]].item_ids.size() )
-        {
-            _batch.stacks[_batch.order[i]].at++;
-            return {_batch.order[i], _batch.stacks[_batch.order[i]].at-1};
-        }
-    }
-
-    return {-1,-1};
-}
-
-void Solver::initialize_stack_order()
-{
-    _batch.order.resize(_batch.stacks.size());
-    for(int i = 0; i < _batch.order.size(); ++i)
-    {
-        _batch.order[i] = i;
-    }
-}
-
-void Solver::order_stack()
-{
-    std::sort(
-        _batch.order.begin(),
-        _batch.order.end(),
-        [this](int a, int b)
-        {
-            bool a_finished = _batch.stacks[a].at >= _batch.stacks[a].item_ids.size();
-            bool b_finished = _batch.stacks[b].at >= _batch.stacks[b].item_ids.size();
-
-            if(a_finished != b_finished)
-            {
-                return !a_finished;
-            }
-
-            if(a_finished)
+            if(!rotations_valid_y_cut(node, candidate, y))
             {
                 return false;
             }
 
-            const Item& item_a =
-                _batch.items[_batch.stacks[a].item_ids[_batch.stacks[a].at]];
+            const std::size_t nodes_size = _s.nodes.size();
+            const std::size_t children_size = _s.nodes[node_id].children.size();
 
-            const Item& item_b =
-                _batch.items[_batch.stacks[b].item_ids[_batch.stacks[b].at]];
+            int child_id;
 
-            return item_a.w * item_a.h > item_b.w * item_b.h;
+            if(y == y_from)
+            {
+                child_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    candidate.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+            else
+            {
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y_from,
+                    node.w,
+                    y - y_from,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+
+                child_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    candidate.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+
+            if(rotation_cut(candidate, prev_item_id, prev_item_visited, child_id, true))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id].children.resize(children_size);
+            return false;
+        };
+
+        if(try_orientation(item))
+        {
+            return true;
         }
-    );
+
+        if(!orientation_locked && item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
+
+            if(try_orientation(rotated))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
-
-
-//TRYING DIFFERENT PLACEMENTS
-
-void Solver::get_placements(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at, bool orientation_locked)
+bool Cutter::rotation_try_vertical_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
 {
-    Node node = _s.nodes[node_id];
+    const Node node = _s.nodes[node_id];
 
-    if(prev_item_visited == false && (prev_item_id == -1 || node.type == prev_item_id))
+    const int x_from = node.children.empty()
+        ? node.x
+        : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+
+    const int x_to = node.x + node.w - std::min(item.w, item.h);
+
+    for(int x = x_from; x <= x_to; ++x)
+    {
+        if(!passes_min_waste_constraint(x, x_from))
+        {
+            continue;
+        }
+
+        auto try_orientation = [&](Item& candidate) -> bool
+        {
+            if(!rotations_valid_x_cut(node, candidate, x, x_from))
+            {
+                return false;
+            }
+
+            const std::size_t nodes_size = _s.nodes.size();
+            const std::size_t children_size = _s.nodes[node_id].children.size();
+
+            int child_id;
+
+            if(x == x_from)
+            {
+                child_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    candidate.w,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+            else
+            {
+                _s.add_node(
+                    node.plate_id,
+                    x_from,
+                    node.y,
+                    x - x_from,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+
+                child_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    candidate.w,
+                    node.h,
+                    -2,
+                    node.cut + 1,
+                    node.node_id,
+                    false);
+            }
+
+            if(rotation_cut(candidate, prev_item_id, prev_item_visited, child_id, true))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id].children.resize(children_size);
+            return false;
+        };
+
+        if(try_orientation(item))
+        {
+            return true;
+        }
+
+        if(!orientation_locked && item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
+
+            if(try_orientation(rotated))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool Cutter::rotation_try_4_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
+{
+    const Node node = _s.nodes[node_id];
+
+    if(item.w != node.w || item.h > node.h)
+    {
+        if(!orientation_locked && item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
+
+            return rotation_try_4_cut(
+                rotated,
+                prev_item_id,
+                prev_item_visited,
+                node_id,
+                true);
+        }
+
+        return false;
+    }
+
+    if(!passes_4_cut_min_waste_constraint(node, item))
+    {
+        return false;
+    }
+
+    if(can_do_bottom_4_cut(node, item))
+    {
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y + item.h,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        return rotation_cut(
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            orientation_locked);
+    }
+
+    if(can_do_top_4_cut(node, item))
+    {
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y + node.h - item.h,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        return rotation_cut(
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            orientation_locked);
+    }
+
+    return false;
+}
+
+bool Cutter::rotation_try_subdivide_orientation(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
+    const Node parent = _s.nodes[node.parent];
+
+    int child_index = -1;
+
+    for(int i = 0; i < static_cast<int>(parent.children.size()); ++i)
+    {
+        if(parent.children[i] == node_id)
+        {
+            child_index = i;
+            break;
+        }
+    }
+
+    if(child_index == -1)
+    {
+        return false;
+    }
+
+    if(node.cut % 2 == 0)
+    {
+        const int y_from = node.y;
+        const int y_to = node.y + node.h - item.h;
+
+        for(int y = y_from; y <= y_to; ++y)
+        {
+            if(node.h - item.h < min_waste ||
+               !y_cut_avoids_defects(y, parent) ||
+               !y_cut_avoids_defects(y + item.h, parent) ||
+               !passes_min_waste_constraint(y, y_from) ||
+               (y + item.h < node.y + node.h &&
+                node.y + node.h - y - item.h < min_waste) ||
+               (node.cut == 2 && item.h < min_2_cut))
+            {
+                continue;
+            }
+
+            const std::size_t nodes_size = _s.nodes.size();
+
+            int item_node_id;
+
+            if(y == y_from)
+            {
+                _s.nodes[node_id].h = item.h;
+
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y + item.h,
+                    node.w,
+                    node.h - item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                item_node_id = node_id;
+            }
+            else if(y + item.h == node.y + node.h)
+            {
+                _s.nodes[node_id].h = node.h - item.h;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+            }
+            else
+            {
+                _s.nodes[node_id].h = y - node.y;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y + item.h,
+                    node.w,
+                    node.y + node.h - y - item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 2);
+            }
+
+            if(rotation_cut(item, prev_item_id, prev_item_visited, item_node_id, true))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id] = node;
+            _s.nodes[parent.node_id] = parent;
+        }
+    }
+    else
+    {
+        const int x_from = node.x;
+        const int x_to = node.x + node.w - item.w;
+
+        for(int x = x_from; x <= x_to; ++x)
+        {
+            if(node.w - item.w < min_waste ||
+               !x_cut_avoids_defects(x, parent) ||
+               !x_cut_avoids_defects(x + item.w, parent) ||
+               !passes_min_waste_constraint(x, x_from) ||
+               (x + item.w < node.x + node.w &&
+                node.x + node.w - x - item.w < min_waste) ||
+               (node.cut == 1 &&
+                (item.w < min_1_cut || item.w > max_1_cut)))
+            {
+                continue;
+            }
+
+            const std::size_t nodes_size = _s.nodes.size();
+
+            int item_node_id;
+
+            if(x == x_from)
+            {
+                _s.nodes[node_id].w = item.w;
+
+                _s.add_node(
+                    node.plate_id,
+                    x + item.w,
+                    node.y,
+                    node.w - item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                item_node_id = node_id;
+            }
+            else if(x + item.w == node.x + node.w)
+            {
+                _s.nodes[node_id].w = node.w - item.w;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+            }
+            else
+            {
+                _s.nodes[node_id].w = x - node.x;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                _s.add_node(
+                    node.plate_id,
+                    x + item.w,
+                    node.y,
+                    node.x + node.w - x - item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 2);
+            }
+
+            if(rotation_cut(item, prev_item_id, prev_item_visited, item_node_id, true))
+            {
+                return true;
+            }
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id] = node;
+            _s.nodes[parent.node_id] = parent;
+        }
+    }
+
+    return false;
+}
+
+bool Cutter::rotation_try_subdivide_node(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
+{
+    if(rotation_try_subdivide_orientation(
+        item,
+        prev_item_id,
+        prev_item_visited,
+        node_id))
+    {
+        return true;
+    }
+
+    if(!orientation_locked && item.w != item.h)
+    {
+        Item rotated = item;
+        std::swap(rotated.w, rotated.h);
+
+        return rotation_try_subdivide_orientation(
+            rotated,
+            prev_item_id,
+            prev_item_visited,
+            node_id);
+    }
+
+    return false;
+}
+
+bool Cutter::rotation_cut(
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
+{
+    const Node node = _s.nodes[node_id];
+
+    if(!prev_item_visited && (prev_item_id == -1 || node.type == prev_item_id))
     {
         prev_item_visited = true;
     }
 
-    //check if node is a branch: at this point every node is marked either as branch or as item
+    if(node.type != -2)
+    {
+        return false;
+    }
+
+    const bool exact_original = item.w == node.w && item.h == node.h;
+    const bool exact_rotated =
+        !orientation_locked && item.h == node.w && item.w == node.h;
+
+    if(exact_original || exact_rotated)
+    {
+        if(!node.children.empty())
+        {
+            return false;
+        }
+
+        if(prev_item_visited && no_defect_in_node(node))
+        {
+            _s.nodes[node_id].type = item.id;
+            return true;
+        }
+
+        return false;
+    }
+
+    if(node.cut == 4)
+    {
+        return false;
+    }
+
+    if(!node.children.empty())
+    {
+        for(int child_id : node.children)
+        {
+            if(rotation_cut(
+                item,
+                prev_item_id,
+                prev_item_visited,
+                child_id,
+                orientation_locked))
+            {
+                return true;
+            }
+        }
+
+        if(node.cut == 3)
+        {
+            return false;
+        }
+    }
+
+    if(!prev_item_visited)
+    {
+        return false;
+    }
+
+    if(node.children.empty() && node.parent != -1)
+    {
+        if(rotation_try_subdivide_node(
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id,
+            orientation_locked))
+        {
+            return true;
+        }
+    }
+
+    if(node.cut % 2 == 0)
+    {
+        return rotation_try_vertical_cut(
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id,
+            orientation_locked);
+    }
+
+    if(node.cut == 3)
+    {
+        return rotation_try_4_cut(
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id,
+            orientation_locked);
+    }
+
+    return rotation_try_horizontal_cut(
+        item,
+        prev_item_id,
+        prev_item_visited,
+        node_id,
+        orientation_locked);
+}
+
+// -----------------------------------------------------------------------------
+// CutPlacementGenerator
+// -----------------------------------------------------------------------------
+
+bool CutPlacementGenerator::same_node(const Node& a, const Node& b)
+{
+    return a.plate_id == b.plate_id &&
+           a.node_id == b.node_id &&
+           a.x == b.x &&
+           a.y == b.y &&
+           a.w == b.w &&
+           a.h == b.h &&
+           a.type == b.type &&
+           a.cut == b.cut &&
+           a.parent == b.parent &&
+           a.children == b.children;
+}
+
+void CutPlacementGenerator::record_placement(std::vector<Change>& placements) const
+{
+    Change change;
+
+    const std::size_t common_size = std::min(
+        _base_solution.nodes.size(),
+        _s.nodes.size());
+
+    for(std::size_t i = 0; i < common_size; ++i)
+    {
+        if(!same_node(_base_solution.nodes[i], _s.nodes[i]))
+        {
+            change.updates.push_back(NodeChange{
+                static_cast<int>(i),
+                _s.nodes[i]
+            });
+        }
+    }
+
+    for(std::size_t i = common_size; i < _s.nodes.size(); ++i)
+    {
+        change.updates.push_back(NodeChange{
+            static_cast<int>(i),
+            _s.nodes[i]
+        });
+    }
+
+    placements.push_back(std::move(change));
+}
+
+std::vector<int> CutPlacementGenerator::possible_x_cut_positions(
+    const Item& item,
+    const Node& node) const
+{
+    std::vector<int> positions;
+
+    const int x_from = node.children.empty()
+        ? node.x
+        : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+
+    const int x_to = node.x + node.w - item.w;
+
+    for(int x = x_from; x <= x_to; ++x)
+    {
+        if(x_cut_avoids_defects(x, node) &&
+           x_cut_avoids_defects(x + item.w, node))
+        {
+            positions.push_back(x);
+            break;
+        }
+    }
+
+    for(int x = x_to; x >= x_from; --x)
+    {
+        if(x_cut_avoids_defects(x, node) &&
+           x_cut_avoids_defects(x + item.w, node))
+        {
+            if(positions.empty() || positions.back() != x)
+            {
+                positions.push_back(x);
+            }
+            break;
+        }
+    }
+
+    for(const Defect& defect : _bin.defects)
+    {
+        if(!defect_in_node(node, defect))
+        {
+            continue;
+        }
+
+        const int before = defect.x - item.w;
+        const int after = defect.x + defect.w;
+
+        if(before >= x_from && before <= x_to)
+        {
+            positions.push_back(before);
+        }
+
+        if(after >= x_from && after <= x_to)
+        {
+            positions.push_back(after);
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end());
+
+    return positions;
+}
+
+std::vector<int> CutPlacementGenerator::possible_y_cut_positions(
+    const Item& item,
+    const Node& node) const
+{
+    std::vector<int> positions;
+
+    const int y_from = node.children.empty()
+        ? node.y
+        : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+
+    const int y_to = node.y + node.h - item.h;
+
+    for(int y = y_from; y <= y_to; ++y)
+    {
+        if(y_cut_avoids_defects(y, node) &&
+           y_cut_avoids_defects(y + item.h, node))
+        {
+            positions.push_back(y);
+            break;
+        }
+    }
+
+    for(int y = y_to; y >= y_from; --y)
+    {
+        if(y_cut_avoids_defects(y, node) &&
+           y_cut_avoids_defects(y + item.h, node))
+        {
+            if(positions.empty() || positions.back() != y)
+            {
+                positions.push_back(y);
+            }
+            break;
+        }
+    }
+
+    for(const Defect& defect : _bin.defects)
+    {
+        if(!defect_in_node(node, defect))
+        {
+            continue;
+        }
+
+        const int before = defect.y - item.h;
+        const int after = defect.y + defect.h;
+
+        if(before >= y_from && before <= y_to)
+        {
+            positions.push_back(before);
+        }
+
+        if(after >= y_from && after <= y_to)
+        {
+            positions.push_back(after);
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end());
+
+    return positions;
+}
+
+std::vector<int> CutPlacementGenerator::possible_x_subdivision_positions(
+    const Item& item,
+    const Node& node) const
+{
+    std::vector<int> positions;
+    const int x_from = node.x;
+    const int x_to = node.x + node.w - item.w;
+
+    for(int x = x_from; x <= x_to; ++x)
+    {
+        if(x_cut_avoids_defects(x, node) &&
+           x_cut_avoids_defects(x + item.w, node))
+        {
+            positions.push_back(x);
+            break;
+        }
+    }
+
+    for(int x = x_to; x >= x_from; --x)
+    {
+        if(x_cut_avoids_defects(x, node) &&
+           x_cut_avoids_defects(x + item.w, node))
+        {
+            if(positions.empty() || positions.back() != x)
+            {
+                positions.push_back(x);
+            }
+            break;
+        }
+    }
+
+    for(const Defect& defect : _bin.defects)
+    {
+        if(!defect_in_node(node, defect))
+        {
+            continue;
+        }
+
+        const int before = defect.x - item.w;
+        const int after = defect.x + defect.w;
+
+        if(before >= x_from && before <= x_to)
+        {
+            positions.push_back(before);
+        }
+
+        if(after >= x_from && after <= x_to)
+        {
+            positions.push_back(after);
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end());
+
+    return positions;
+}
+
+std::vector<int> CutPlacementGenerator::possible_y_subdivision_positions(
+    const Item& item,
+    const Node& node) const
+{
+    std::vector<int> positions;
+    const int y_from = node.y;
+    const int y_to = node.y + node.h - item.h;
+
+    for(int y = y_from; y <= y_to; ++y)
+    {
+        if(y_cut_avoids_defects(y, node) &&
+           y_cut_avoids_defects(y + item.h, node))
+        {
+            positions.push_back(y);
+            break;
+        }
+    }
+
+    for(int y = y_to; y >= y_from; --y)
+    {
+        if(y_cut_avoids_defects(y, node) &&
+           y_cut_avoids_defects(y + item.h, node))
+        {
+            if(positions.empty() || positions.back() != y)
+            {
+                positions.push_back(y);
+            }
+            break;
+        }
+    }
+
+    for(const Defect& defect : _bin.defects)
+    {
+        if(!defect_in_node(node, defect))
+        {
+            continue;
+        }
+
+        const int before = defect.y - item.h;
+        const int after = defect.y + defect.h;
+
+        if(before >= y_from && before <= y_to)
+        {
+            positions.push_back(before);
+        }
+
+        if(after >= y_from && after <= y_to)
+        {
+            positions.push_back(after);
+        }
+    }
+
+    std::sort(positions.begin(), positions.end());
+    positions.erase(
+        std::unique(positions.begin(), positions.end()),
+        positions.end());
+
+    return positions;
+}
+
+void CutPlacementGenerator::try_vertical_cut(
+    std::vector<Change>& placements,
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
+
+    const int x_from = node.children.empty()
+        ? node.x
+        : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
+
+    for(int x : possible_x_cut_positions(item, node))
+    {
+        if(!passes_min_waste_constraint(x, x_from) ||
+           !rotations_valid_x_cut(node, item, x, x_from))
+        {
+            continue;
+        }
+
+        const std::size_t nodes_size = _s.nodes.size();
+        const std::size_t children_size = _s.nodes[node_id].children.size();
+
+        int child_id;
+
+        if(x == x_from)
+        {
+            child_id = _s.add_node(
+                node.plate_id,
+                x,
+                node.y,
+                item.w,
+                node.h,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+        }
+        else
+        {
+            _s.add_node(
+                node.plate_id,
+                x_from,
+                node.y,
+                x - x_from,
+                node.h,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+
+            child_id = _s.add_node(
+                node.plate_id,
+                x,
+                node.y,
+                item.w,
+                node.h,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+        }
+
+        generate(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            true);
+
+        _s.nodes.resize(nodes_size);
+        _s.nodes[node_id].children.resize(children_size);
+    }
+}
+
+void CutPlacementGenerator::try_horizontal_cut(
+    std::vector<Change>& placements,
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
+
+    const int y_from = node.children.empty()
+        ? node.y
+        : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
+
+    for(int y : possible_y_cut_positions(item, node))
+    {
+        if(!passes_min_waste_constraint(y, y_from) ||
+           !rotations_valid_y_cut(node, item, y))
+        {
+            continue;
+        }
+
+        const std::size_t nodes_size = _s.nodes.size();
+        const std::size_t children_size = _s.nodes[node_id].children.size();
+
+        int child_id;
+
+        if(y == y_from)
+        {
+            child_id = _s.add_node(
+                node.plate_id,
+                node.x,
+                y,
+                node.w,
+                item.h,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+        }
+        else
+        {
+            _s.add_node(
+                node.plate_id,
+                node.x,
+                y_from,
+                node.w,
+                y - y_from,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+
+            child_id = _s.add_node(
+                node.plate_id,
+                node.x,
+                y,
+                node.w,
+                item.h,
+                -2,
+                node.cut + 1,
+                node.node_id,
+                false);
+        }
+
+        generate(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            true);
+
+        _s.nodes.resize(nodes_size);
+        _s.nodes[node_id].children.resize(children_size);
+    }
+}
+
+void CutPlacementGenerator::try_4_cut(
+    std::vector<Change>& placements,
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
+
+    if(item.w != node.w || item.h > node.h ||
+       !passes_4_cut_min_waste_constraint(node, item))
+    {
+        return;
+    }
+
+    if(can_do_bottom_4_cut(node, item))
+    {
+        const std::size_t nodes_size = _s.nodes.size();
+        const std::size_t children_size = _s.nodes[node_id].children.size();
+
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y + item.h,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        generate(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            true);
+
+        _s.nodes.resize(nodes_size);
+        _s.nodes[node_id].children.resize(children_size);
+    }
+
+    if(can_do_top_4_cut(node, item))
+    {
+        const std::size_t nodes_size = _s.nodes.size();
+        const std::size_t children_size = _s.nodes[node_id].children.size();
+
+        _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y,
+            node.w,
+            node.h - item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        const int child_id = _s.add_node(
+            node.plate_id,
+            node.x,
+            node.y + node.h - item.h,
+            node.w,
+            item.h,
+            -2,
+            4,
+            node.node_id,
+            false);
+
+        generate(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            child_id,
+            true);
+
+        _s.nodes.resize(nodes_size);
+        _s.nodes[node_id].children.resize(children_size);
+    }
+}
+
+void CutPlacementGenerator::try_subdivide_node(
+    std::vector<Change>& placements,
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id)
+{
+    const Node node = _s.nodes[node_id];
+    const Node parent = _s.nodes[node.parent];
+
+    int child_index = -1;
+
+    for(int i = 0; i < static_cast<int>(parent.children.size()); ++i)
+    {
+        if(parent.children[i] == node_id)
+        {
+            child_index = i;
+            break;
+        }
+    }
+
+    if(child_index == -1)
+    {
+        return;
+    }
+
+    if(node.cut % 2 == 0)
+    {
+        const int y_from = node.y;
+
+        for(int y : possible_y_subdivision_positions(item, node))
+        {
+            if(node.h - item.h < min_waste ||
+               !y_cut_avoids_defects(y, parent) ||
+               !y_cut_avoids_defects(y + item.h, parent) ||
+               !passes_min_waste_constraint(y, y_from) ||
+               (y + item.h < node.y + node.h &&
+                node.y + node.h - y - item.h < min_waste) ||
+               (node.cut == 2 && item.h < min_2_cut))
+            {
+                continue;
+            }
+
+            const std::size_t nodes_size = _s.nodes.size();
+            int item_node_id;
+
+            if(y == node.y)
+            {
+                _s.nodes[node_id].h = item.h;
+
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y + item.h,
+                    node.w,
+                    node.h - item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                item_node_id = node_id;
+            }
+            else if(y + item.h == node.y + node.h)
+            {
+                _s.nodes[node_id].h = node.h - item.h;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+            }
+            else
+            {
+                _s.nodes[node_id].h = y - node.y;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y,
+                    node.w,
+                    item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                _s.add_node(
+                    node.plate_id,
+                    node.x,
+                    y + item.h,
+                    node.w,
+                    node.y + node.h - y - item.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 2);
+            }
+
+            generate(
+                placements,
+                item,
+                prev_item_id,
+                prev_item_visited,
+                item_node_id,
+                true);
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id] = node;
+            _s.nodes[parent.node_id] = parent;
+        }
+    }
+    else
+    {
+        const int x_from = node.x;
+
+        for(int x : possible_x_subdivision_positions(item, node))
+        {
+            if(node.w - item.w < min_waste ||
+               !x_cut_avoids_defects(x, parent) ||
+               !x_cut_avoids_defects(x + item.w, parent) ||
+               !passes_min_waste_constraint(x, x_from) ||
+               (x + item.w < node.x + node.w &&
+                node.x + node.w - x - item.w < min_waste) ||
+               (node.cut == 1 &&
+                (item.w < min_1_cut || item.w > max_1_cut)))
+            {
+                continue;
+            }
+
+            const std::size_t nodes_size = _s.nodes.size();
+            int item_node_id;
+
+            if(x == node.x)
+            {
+                _s.nodes[node_id].w = item.w;
+
+                _s.add_node(
+                    node.plate_id,
+                    x + item.w,
+                    node.y,
+                    node.w - item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                item_node_id = node_id;
+            }
+            else if(x + item.w == node.x + node.w)
+            {
+                _s.nodes[node_id].w = node.w - item.w;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+            }
+            else
+            {
+                _s.nodes[node_id].w = x - node.x;
+
+                item_node_id = _s.add_node(
+                    node.plate_id,
+                    x,
+                    node.y,
+                    item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 1);
+
+                _s.add_node(
+                    node.plate_id,
+                    x + item.w,
+                    node.y,
+                    node.x + node.w - x - item.w,
+                    node.h,
+                    -2,
+                    node.cut,
+                    parent.node_id,
+                    false,
+                    child_index + 2);
+            }
+
+            generate(
+                placements,
+                item,
+                prev_item_id,
+                prev_item_visited,
+                item_node_id,
+                true);
+
+            _s.nodes.resize(nodes_size);
+            _s.nodes[node_id] = node;
+            _s.nodes[parent.node_id] = parent;
+        }
+    }
+}
+
+void CutPlacementGenerator::generate(
+    std::vector<Change>& placements,
+    Item& item,
+    int prev_item_id,
+    bool& prev_item_visited,
+    int node_id,
+    bool orientation_locked)
+{
+    const Node node = _s.nodes[node_id];
+
+    if(!prev_item_visited && (prev_item_id == -1 || node.type == prev_item_id))
+    {
+        prev_item_visited = true;
+    }
+
     if(node.type != -2)
     {
         return;
     }
 
-    //check if node is the same size as item
-    if( (it.w == node.w && it.h == node.h) || (!orientation_locked && it.h == node.w && it.w == node.h) )
+    const bool exact_original = item.w == node.w && item.h == node.h;
+    const bool exact_rotated =
+        !orientation_locked && item.h == node.w && item.w == node.h;
+
+    if(exact_original || exact_rotated)
     {
-        if(!node.children.empty())
+        if(node.children.empty() && prev_item_visited && no_defect_in_node(node))
         {
-            return;
-        }
-
-        if(prev_item_visited && no_defect_in_node(node,bin))
-        {
-            current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-            current_change.updates.back().new_node.type = it.id;
-
-            placements.push_back(current_change);
-
-            return;
+            const int old_type = _s.nodes[node_id].type;
+            _s.nodes[node_id].type = item.id;
+            record_placement(placements);
+            _s.nodes[node_id].type = old_type;
         }
 
         return;
@@ -1213,12 +1788,17 @@ void Solver::get_placements(Change current_change, std::vector<Change>& placemen
         return;
     }
 
-    // try to cut in descendant of node
     if(!node.children.empty())
     {
-        for(auto ch : node.children)
+        for(int child_id : node.children)
         {
-            get_placements(current_change,placements,it,prev_item_id, prev_item_visited, ch, bin, node_id_at, orientation_locked);
+            generate(
+                placements,
+                item,
+                prev_item_id,
+                prev_item_visited,
+                child_id,
+                orientation_locked);
         }
 
         if(node.cut == 3)
@@ -1232,1049 +1812,129 @@ void Solver::get_placements(Change current_change, std::vector<Change>& placemen
         return;
     }
 
-    // try subdivide node
     if(node.children.empty() && node.parent != -1)
     {
-        placement_try_subdivide_node(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+        try_subdivide_node(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id);
 
-        if(!orientation_locked && it.w != it.h)
+        if(!orientation_locked && item.w != item.h)
         {
-            Item rotated = it;
-            std::swap(rotated.w,rotated.h);
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
 
-            placement_try_subdivide_node(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+            try_subdivide_node(
+                placements,
+                rotated,
+                prev_item_id,
+                prev_item_visited,
+                node_id);
         }
     }
 
-    // try to cut new part out of this node
     if(node.cut % 2 == 0)
     {
-        placement_try_vertical_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
-        
-        if(!orientation_locked && it.w != it.h)
-        {
-            Item rotated = it;
-            std::swap(rotated.w,rotated.h);
+        try_vertical_cut(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id);
 
-            placement_try_vertical_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
+        if(!orientation_locked && item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
+
+            try_vertical_cut(
+                placements,
+                rotated,
+                prev_item_id,
+                prev_item_visited,
+                node_id);
+        }
+    }
+    else if(node.cut == 3)
+    {
+        try_4_cut(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id);
+
+        if(!orientation_locked && item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
+
+            try_4_cut(
+                placements,
+                rotated,
+                prev_item_id,
+                prev_item_visited,
+                node_id);
         }
     }
     else
     {
-        if(node.cut == 3)
+        try_horizontal_cut(
+            placements,
+            item,
+            prev_item_id,
+            prev_item_visited,
+            node_id);
+
+        if(!orientation_locked && item.w != item.h)
         {
-            placement_try_4_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
-            
-            if(!orientation_locked && it.w != it.h)
-            {
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
+            Item rotated = item;
+            std::swap(rotated.w, rotated.h);
 
-                placement_try_4_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
-            }
-        }
-        else
-        {
-            placement_try_horizontal_cut(current_change, placements, it, prev_item_id, prev_item_visited, node_id, bin, node_id_at);
-
-            if(!orientation_locked && it.w != it.h)
-            {
-                Item rotated = it;
-                std::swap(rotated.w,rotated.h);
-
-                placement_try_horizontal_cut(current_change,placements,rotated,prev_item_id,prev_item_visited,node_id,bin,node_id_at);
-            }
-        }
-    }
-
-    return;
-}
-
-std::vector<int> Solver::get_possible_y_cut_positions(Item& it, Node& node, Bin& bin) const
-{
-    std::vector<int> positions;
-    int y_from =  node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
-    int y_to = node.y + node.h - it.h;
-
-    for(int y = y_from; y <= y_to; y++)
-    {
-        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
-        {
-            positions.push_back(y);
-            break;
-        }
-    }
-
-    for(int y = y_to; y >= y_from; --y)
-    {
-        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
-        {
-            if(positions.empty() || y != positions.back())
-            {
-                positions.push_back(y);
-            }
-
-            break;
-        }
-    }
-
-    for(auto& defect: bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            if(defect.y-it.h >= y_from && defect.y-it.h <= y_to)
-            {
-                positions.push_back(defect.y-it.h);
-            }
-
-            if(defect.y+defect.h >= y_from && defect.y+defect.h <= y_to)
-            {
-                positions.push_back(defect.y+defect.h);
-            }
-        }
-    }
-
-    std::sort(positions.begin(), positions.end());
-    positions.erase(
-        std::unique(positions.begin(), positions.end()),
-        positions.end()
-    );
-
-    return positions;
-}
-
-void Solver::placement_try_horizontal_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
-{
-    Node node = _s.nodes[node_id];
-    
-
-    int y_from = node.children.empty() ? node.y : _s.nodes[node.children.back()].y + _s.nodes[node.children.back()].h;
-
-    for(int y : get_possible_y_cut_positions(it,node,bin))
-    {
-        if(!(y > y_from && y-y_from < min_waste))
-        {
-            if( item_in_node(node,node.x,y,it) &&
-                !(y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) &&
-                !(node.cut == 1 && it.h < min_2_cut) && 
-                valid_y_cut(y,node,bin) && 
-                valid_y_cut(y+it.h,node,bin) )
-            {
-                int nodes_size = _s.nodes.size();
-                int node_children_size = node.children.size();
-                int node_id_at_current = node_id_at;
-                int current_change_size = current_change.updates.size();
-
-                if(y == y_from)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-                }
-                else
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y_from,
-                        node.w,
-                        y-y_from,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-                }
-
-                get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
-
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(node_children_size);
-                node_id_at = node_id_at_current;
-                current_change.updates.resize(current_change_size);
-            }
+            try_horizontal_cut(
+                placements,
+                rotated,
+                prev_item_id,
+                prev_item_visited,
+                node_id);
         }
     }
 }
 
-void Solver::placement_try_4_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
+std::vector<Change> CutPlacementGenerator::get_placements(
+    Item& item,
+    int prev_item_id,
+    int node_id,
+    bool allow_rotation)
 {
-    Node node = _s.nodes[node_id];
+    _base_solution = _s;
 
-    if(it.w != node.w || it.h > node.h)
-    {
-        return;
-    }
+    std::vector<Change> placements;
+    bool prev_item_visited = false;
 
-    int nodes_size = _s.nodes.size();
-    int current_node_id_at = node_id_at;
-    int node_children_size = node.children.size();
-    int current_change_size = current_change.updates.size();
+    generate(
+        placements,
+        item,
+        prev_item_id,
+        prev_item_visited,
+        node_id,
+        !allow_rotation);
 
-    if(can_do_bottom_4_cut(bin,node,it))
-    {
-        if(node.h-it.h >= min_waste)
-        {
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y,
-                node.w,
-                it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-            node_id_at++;
-
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y+it.h,
-                node.w,
-                node.h-it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-            current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-            node_id_at++;
-
-            get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
-
-            _s.nodes.resize(nodes_size);
-            node_id_at = current_node_id_at;
-            _s.nodes[node_id].children.resize(node_children_size);
-            current_change.updates.resize(current_change_size);
-        }
-    }
-    
-    if(can_do_top_4_cut(bin,node,it))
-    {
-        if(node.h-it.h >= min_waste)
-        {
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y,
-                node.w,
-                node.h-it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-            node_id_at++;
-
-            _s.nodes.push_back(Node{
-                node.plate_id,
-                node_id_at,
-                node.x,
-                node.y+node.h-it.h,
-                node.w,
-                it.h,
-                -2,
-                4,
-                node.node_id
-            });
-
-            _s.nodes[node_id].children.push_back(node_id_at);
-
-            current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-            current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-            node_id_at++;
-
-            get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
-
-            _s.nodes.resize(nodes_size);
-            node_id_at = current_node_id_at;
-            _s.nodes[node_id].children.resize(node_children_size);
-            current_change.updates.resize(current_change_size);
-        }
-    }
+    _s = _base_solution;
+    return placements;
 }
 
-std::vector<int> Solver::get_possible_x_cut_positions(Item& it, Node& node, Bin& bin) const
+void apply_change(Solution& solution, const Change& change)
 {
-    std::vector<int> positions;
-    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
-    int x_to = node.x + node.w - it.w;
-
-    for(int x = x_from; x <= x_to; x++)
+    for(const NodeChange& update : change.updates)
     {
-        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
+        if(solution.nodes.size() <= static_cast<std::size_t>(update.node_id))
         {
-            positions.push_back(x);
-            break;
-        }
-    }
-
-    for(int x = x_to; x >= x_from; --x)
-    {
-        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
-        {
-            if(positions.empty() || x != positions.back())
-            {
-                positions.push_back(x);
-            }
-
-            break;
-        }
-    }
-
-    for(auto& defect: bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            if(defect.x-it.w >= x_from && defect.x-it.w <= x_to)
-            {
-                positions.push_back(defect.x-it.w);
-            }
-            
-            if(defect.x+defect.w >= x_from && defect.x+defect.w <= x_to)
-            {
-                positions.push_back(defect.x+defect.w);
-            }
-        }
-    }
-
-    std::sort(positions.begin(), positions.end());
-    positions.erase(
-        std::unique(positions.begin(), positions.end()),
-        positions.end()
-    );
-
-    return positions;
-}
-
-void Solver::placement_try_vertical_cut(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
-{
-    Node node = _s.nodes[node_id];
-
-    int x_from =  node.children.empty() ? node.x : _s.nodes[node.children.back()].x + _s.nodes[node.children.back()].w;
-
-    for(auto x : get_possible_x_cut_positions(it,_s.nodes[node_id],bin))
-    {
-        if(!(x > x_from && x-x_from < min_waste))
-        {
-            if( item_in_node(node,x,node.y,it) &&
-                !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
-                !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
-                !(node.cut == 0 && x > x_from && (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
-                valid_x_cut(x,node,bin) && 
-                valid_x_cut(x+it.w,node,bin) )
-            {
-                int nodes_size = _s.nodes.size();
-                int node_children_size = node.children.size();
-                int node_id_at_current = node_id_at;
-                int current_change_size = current_change.updates.size();
-
-                if(x == x_from)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    node_id_at++;
-                }
-                else
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x_from,
-                        node.y,
-                        x-x_from,
-                        node.h,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut + 1,
-                        node.node_id
-                    });
-
-                    _s.nodes[node_id].children.push_back(node_id_at);
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    node_id_at++;
-                }
-
-                get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
-
-                _s.nodes.resize(nodes_size);
-                _s.nodes[node_id].children.resize(node_children_size);
-                node_id_at = node_id_at_current;
-                current_change.updates.resize(current_change_size);
-            }
-        }
-    }
-}
-
-std::vector<int> Solver::get_possible_y_cut_positions_subdivision(Item& it, Node& node, Bin& bin) const
-{
-    std::vector<int> positions;
-    int y_from = node.y;
-    int y_to = node.y + node.h - it.h;
-
-    for(int y = y_from; y <= y_to; y++)
-    {
-        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
-        {
-            positions.push_back(y);
-            break;
-        }
-    }
-
-    for(int y = y_to; y >= y_from; --y)
-    {
-        if(valid_y_cut(y,node,bin) && valid_y_cut(y+it.h,node,bin))
-        {
-            if(positions.empty() || y != positions.back())
-            {
-                positions.push_back(y);
-            }
-
-            break;
-        }
-    }
-
-    for(auto& defect: bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            if(defect.y-it.h >= y_from && defect.y-it.h <= y_to)
-            {
-                positions.push_back(defect.y-it.h);
-            }
-
-            if(defect.y+defect.h >= y_from && defect.y+defect.h <= y_to)
-            {
-                positions.push_back(defect.y+defect.h);
-            }
-        }
-    }
-
-    std::sort(positions.begin(), positions.end());
-    positions.erase(
-        std::unique(positions.begin(), positions.end()),
-        positions.end()
-    );
-
-    return positions;
-}
-
-std::vector<int> Solver::get_possible_x_cut_positions_subdivision(Item& it, Node& node, Bin& bin) const
-{
-    std::vector<int> positions;
-    int x_from = node.x;
-    int x_to = node.x + node.w - it.w;
-
-    for(int x = x_from; x <= x_to; x++)
-    {
-        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
-        {
-            positions.push_back(x);
-            break;
-        }
-    }
-
-    for(int x = x_to; x >= x_from; --x)
-    {
-        if(valid_x_cut(x,node,bin) && valid_x_cut(x+it.w,node,bin))
-        {
-            if(positions.empty() || x != positions.back())
-            {
-                positions.push_back(x);
-            }
-
-            break;
-        }
-    }
-
-    for(auto& defect: bin.defects)
-    {
-        if(defect_in_node(node,defect))
-        {
-            if(defect.x-it.w >= x_from && defect.x-it.w <= x_to)
-            {
-                positions.push_back(defect.x-it.w);
-            }
-            
-            if(defect.x+defect.w >= x_from && defect.x+defect.w <= x_to)
-            {
-                positions.push_back(defect.x+defect.w);
-            }
-        }
-    }
-
-    std::sort(positions.begin(), positions.end());
-    positions.erase(
-        std::unique(positions.begin(), positions.end()),
-        positions.end()
-    );
-
-    return positions;
-}
-
-void Solver::placement_try_subdivide_node(Change current_change, std::vector<Change>& placements, Item& it, int prev_item_id, bool& prev_item_visited, int node_id, Bin& bin, int& node_id_at)
-{
-    Node node = _s.nodes[node_id];
-    Node parent = _s.nodes[_s.nodes[node_id].parent];
-
-
-    int child_index = -1;
-    for(int i = 0; i < parent.children.size(); ++i)
-    {
-        if(parent.children[i] == node.node_id)
-        {
-            child_index = i;
-            break;
-        }
-    }
-
-    if(node.cut%2 == 0)
-    {
-        int y_from = node.y;
-        int y_to = node.y + node.h - it.h;
-
-        for(int y : get_possible_y_cut_positions_subdivision(it,_s.nodes[node_id],bin))
-        {
-            if( node.h - it.h >= min_waste &&
-                valid_y_cut(y,parent,bin) &&
-                valid_y_cut(y + it.h,parent,bin) &&
-                !(y>y_from && y-y_from < min_waste) &&
-                !(y+it.h < node.y+node.h && node.y+node.h-y-it.h < min_waste) &&
-                y+it.h <= node.y + node.h &&
-                !(node.cut == 2 && it.h < min_2_cut))
-            {
-                int current_nodes_size = _s.nodes.size();
-                int current_node_id_at = node_id_at;
-                int current_change_size = current_change.updates.size();
-
-                if( y == y_from )
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y + it.h,
-                        node.w,
-                        node.h-it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-                    
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].h = it.h;
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
-            
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-                }
-                else if(y+it.h == node.y + node.h)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].h = node.h-it.h;
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
-                    
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-
-                }
-                else
-                {
-                     _s.nodes[node_id].h = y-node.y;
-
-                     current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y,
-                        node.w,
-                        it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        node.x,
-                        y+it.h,
-                        node.w,
-                        node.y + node.h - y - it.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-
-                    node_id_at++;
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
-                    
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-                }
-            }            
-       }
-    }
-    else
-    {
-        int x_from = node.x;
-        int x_to = node.x + node.w - it.w;
-
-        for(int x : get_possible_x_cut_positions_subdivision(it,_s.nodes[node_id],bin))
-        {
-            if( node.w - it.w >= min_waste &&
-                valid_x_cut(x,parent,bin) &&
-                valid_x_cut(x + it.w,parent,bin) &&
-                !(x>x_from && x-x_from < min_waste) &&
-                !(x+it.w < node.x+node.w && node.x+node.w-x-it.w < min_waste) &&
-                x + it.w <= node.x + node.w &&
-                !(node.cut == 1 && (it.w < min_1_cut || it.w > max_1_cut)))
-            {
-                int current_nodes_size = _s.nodes.size();
-                int current_node_id_at = node_id_at;
-                int current_change_size = current_change.updates.size();
-
-                if( x == x_from )
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x+it.w,
-                        node.y,
-                        node.w-it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].w = it.w;
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id,bin,node_id_at,true);
-                    
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-
-                }
-                else if(x+it.w == node.x + node.w)
-                {
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-
-                    node_id_at++;
-
-                    _s.nodes[node_id].w = node.w-it.w;
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-1,bin,node_id_at,true);
-    
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-                }
-                else
-                {
-                    _s.nodes[node_id].w = x-node.x;
-
-                    current_change.updates.push_back(NodeChange{node_id,_s.nodes[node_id]});
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x,
-                        node.y,
-                        it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+1,node_id_at);
-
-                    node_id_at++;
-
-                    _s.nodes.push_back(Node{
-                        bin.id,
-                        node_id_at,
-                        x+it.w,
-                        node.y,
-                        node.x + node.w -x- it.w,
-                        node.h,
-                        -2,
-                        node.cut,
-                        parent.node_id
-                    });
-
-                    current_change.updates.push_back(NodeChange{node_id_at,_s.nodes.back()});
-
-                    _s.nodes[parent.node_id].children.insert(_s.nodes[parent.node_id].children.begin()+child_index+2,node_id_at);
-
-                    current_change.updates.push_back(NodeChange{parent.node_id,_s.nodes[parent.node_id]});
-                
-
-                    node_id_at++;
-
-                    get_placements(current_change,placements,it,prev_item_id,prev_item_visited,node_id_at-2,bin,node_id_at,true);
-                
-                    _s.nodes.resize(current_nodes_size);
-                    node_id_at = current_node_id_at;
-                    _s.nodes[node_id] = node;
-                    _s.nodes[parent.node_id] = parent;
-                    current_change.updates.resize(current_change_size);
-                }
-            }
-        }   
-    }
-}
-
-void Solver::apply_change(const Change& change, int& node_id_at)
-{
-    for(const auto& update : change.updates)
-    {
-        if(_s.nodes.size() <= update.node_id)
-        {
-            _s.nodes.resize(update.node_id + 1);
+            solution.nodes.resize(static_cast<std::size_t>(update.node_id) + 1);
         }
 
-        _s.nodes[update.node_id] = update.new_node;
-    }
-
-    node_id_at = _s.nodes.size();
-}
-
-int Solver::evaluate_change(const Change& change, Bin& bin, int& node_id_at)
-{
-    Solution save_solution = _s;
-    Batch save_batch = _batch;
-    int save_node_id_at = node_id_at;
-
-    apply_change(change,node_id_at);
-
-    NextItem next = next_item();
-
-    int total_area = 0;
-
-    while(next.stack_id != -1)
-    {
-        bool prev_item_visited = false;
-
-        Item item = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
-
-        bool can_be_cut = cut( item, // next item
-                                _batch.stacks[next.stack_id].prev_item, // previous item id
-                                prev_item_visited, // false
-                                _s.roots.back(), // starting node id = current root
-                                bin, // current bin used
-                                node_id_at,
-                                false
-        );
-
-        if(!can_be_cut)
-        {
-            _batch.stacks[next.stack_id].at --;
-            _batch.stacks[next.stack_id].can_cut = false;
-        }
-        else
-        {
-            _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
-            total_area = total_area + item.w*item.h;
-            order_stack();
-        }
-
-        next = next_item();
-    }
-
-    _s = save_solution;
-    _batch = save_batch;
-    node_id_at = save_node_id_at;
-
-    return total_area;
-}
-
-void Solver::solve()
-{
-    int node_id_at = 0;
-
-    for(auto& bin: _bins)
-    {
-        // add root node
-        _s.nodes.push_back(Node{
-            bin.id,         // bin id
-            node_id_at,     // node id
-            0,              // x
-            0,              // y
-            bin.w,          // w
-            bin.h,          // h
-            -2,             // branch
-            0,              // cut type
-            -1              // no parent
-        });
-
-        _s.roots.push_back(node_id_at);
-
-        node_id_at++;
-
-        initialize_stack_order();
-        order_stack();
-
-        NextItem next = next_item();
-
-        while(next.stack_id != -1)
-        {
-            Change current_change;
-            std::vector<Change> placements;
-
-            Item it = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
-            bool prev_item_visited = false;
-
-            get_placements( current_change,
-                            placements,
-                            it,
-                            _batch.stacks[next.stack_id].prev_item,
-                            prev_item_visited,
-                            _s.roots.back(),
-                            bin,
-                            node_id_at,
-                            false
-                            );
-            
-
-            if(placements.empty())
-            {
-                _batch.stacks[next.stack_id].at --;
-                _batch.stacks[next.stack_id].can_cut = false;
-            }
-            else
-            {
-                _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
-
-                int max_value = -1;
-                Change best_change;
-
-                for(auto& change : placements)
-                {
-                    int change_val = evaluate_change(change,bin,node_id_at);
-
-                    if(max_value < change_val)
-                    {
-                        max_value = change_val;
-                        best_change = change;
-                    }
-                }
-
-                apply_change(best_change,node_id_at);
-
-                order_stack();
-            }
-
-            next = next_item();
-        }
-
-        bool finished = true;
-
-        for(auto& stack : _batch.stacks)
-        {
-            if(stack.at < stack.item_ids.size())
-            {
-                finished = false;
-            }
-
-            stack.can_cut = true;
-            stack.prev_item = -1;
-        }
-
-        if(finished)
-        {
-            break;
-        }
-    }
-
-    for(auto root : _s.roots) set_waste(root,node_id_at);
-
-    if( _s.nodes[_s.nodes[_s.roots.back()].children.back()].type == -1 )
-    {
-        _s.nodes[_s.nodes[_s.roots.back()].children.back()].type = -3;
+        solution.nodes[update.node_id] = update.new_node;
     }
 }
