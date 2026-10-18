@@ -127,3 +127,98 @@ bool Cutter::valid_4_cut(int node_h, int it_h) const
 {
     return node_h-it_h >= min_waste;
 }
+
+
+bool Cutter::no_defect_in_node(const Node& node, const Bin& bin) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Cutter::x_cut_touches_any_defect(int x, const Node& node, const Bin& bin) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if(defect_in_node(node,defect) && x_cut_touches_defect(x,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Cutter::y_cut_touches_any_defect(int y, const Node& node, const Bin& bin) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if(defect_in_node(node,defect) && y_cut_touches_defect(y,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Cutter::passes_min_waste_constraint(int coord, int coord_from) const
+{
+    return !(coord > coord_from && coord-coord_from < min_waste);
+}
+
+bool Cutter::rotations_valid_y_cut(Node& node, Item& it, int y) const
+{
+    return  item_in_node(node,node.x,y,it) &&
+            !(y + it.h < node.y + node.h && node.y + node.h - y - it.h < min_waste) &&
+            !(node.cut == 1 && it.h < min_2_cut) && 
+            y_cut_touches_any_defect(y,node,_bin) && 
+            y_cut_touches_any_defect(y+it.h,node,_bin);
+}
+
+bool Cutter::rotations_valid_x_cut(Node& node, Item& it, int x, int x_from) const
+{
+    return  item_in_node(node,x,node.y,it) &&
+            !(x + it.w < node.x + node.w && node.x + node.w - x - it.w < min_waste) &&
+            !(node.cut == 0 && (it.w < min_1_cut || it.w > max_1_cut)) && 
+            !(node.cut == 0 && x > x_from && (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
+            x_cut_touches_any_defect(x,node,_bin) && 
+            x_cut_touches_any_defect(x+it.w,node,_bin);
+}
+
+bool Cutter::can_do_bottom_4_cut(const Bin& bin, const Node& node, const Item& it) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if( defect_in_node(node,defect) && item_touches_defect(node.x,node.y,it,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Cutter::can_do_top_4_cut(const Bin& bin, const Node& node, const Item& it) const
+{
+    for(auto& defect : bin.defects)
+    {
+        if( defect_in_node(node,defect) && item_touches_defect(node.x,node.y+node.h-it.h,it,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Cutter::passes_4_cut_min_waste_constraint(Node& node, Item& it) const
+{
+    return node.h-it.h >= min_waste;
+}

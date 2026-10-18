@@ -23,7 +23,7 @@ class Cutter
             }
             else if(_method == CutMethod::Rotation)
             {
-                return rotation_cut();
+                return rotation_cut(it,prev_item_id,prev_item_visited,node_id,false);
             }
             else
             {
@@ -36,12 +36,18 @@ class Cutter
         const Bin& _bin;
         const CutMethod _method;
 
-        bool rotation_cut();
-
+        //cutter.cpp
         bool fast_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id);
         bool fast_try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id);
         bool fast_try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id);
         bool fast_try_horizontal_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id);
+
+        //cutter.cpp
+        bool rotation_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked);
+        bool rotation_try_horizontal_cut( Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked );
+        bool rotation_try_4_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked);
+        bool rotation_try_vertical_cut(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked);
+        bool rotation_try_subdivide_node(Item& it, int prev_item_id, bool& prev_item_visited, int node_id, bool orientation_locked);
 
         //cut_geometry.cpp
         bool can_cut(const Bin& bin, const Node& node, int x, int y, const Item& it);
@@ -53,6 +59,15 @@ class Cutter
         bool valid_x_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const;
         bool valid_y_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& it) const;
         bool valid_4_cut(int node_h, int it_h) const;
+        bool no_defect_in_node(const Node& node, const Bin& bin) const;
+        bool x_cut_touches_any_defect(int x, const Node& node, const Bin& bin) const;
+        bool y_cut_touches_any_defect(int y, const Node& node, const Bin& bin) const;
+        bool passes_min_waste_constraint(int coord, int coord_from) const;
+        bool rotations_valid_y_cut(Node& node, Item& it, int y) const;
+        bool rotations_valid_x_cut(Node& node, Item& it, int x, int x_from) const;
+        bool can_do_bottom_4_cut(const Bin& bin, const Node& node, const Item& it) const;
+        bool can_do_top_4_cut(const Bin& bin, const Node& node, const Item& it) const;
+        bool passes_4_cut_min_waste_constraint(Node& node, Item& it) const;
 };
 
 class CutPlacementGenerator
