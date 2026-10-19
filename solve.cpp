@@ -66,10 +66,20 @@ void Solver::solve()
     for(auto& bin: _bins)
     {
         // add root node
-        _s.add_node(bin.id,0,0,bin.w,bin.h,-2,0,-1,true);
+        _s.add_node(
+                    bin.id,
+                    0,
+                    0,
+                    bin.w,
+                    bin.h,
+                    -2,
+                    0,
+                    -1,
+                    true
+                );
 
         //create cutter
-        Cutter cutter = Cutter(_s,bin,CutMethod::Fast);
+        Cutter cutter = Cutter(_s,bin,CutMethod::Rotation);
 
         NextItem next = next_item();
 
@@ -77,10 +87,10 @@ void Solver::solve()
         {
             bool prev_item_visited = false;
 
-            bool can_be_cut = cutter.cut( _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]], // next item
-                                   _batch.stacks[next.stack_id].prev_item, // previous item id
-                                   prev_item_visited, // false
-                                   _s.roots.back() // starting node id = current root
+            bool can_be_cut = cutter.cut(   _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]], // next item
+                                            _batch.stacks[next.stack_id].prev_item, // previous item id
+                                            prev_item_visited, // false
+                                            _s.roots.back() // starting node id = current root
             );
 
             if(!can_be_cut)
