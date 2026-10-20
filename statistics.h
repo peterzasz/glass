@@ -4,6 +4,6 @@
 #include "data.h"
 #include "string"
 
-void create_statistics_file(const Solution& _s, const std::string& path, const std::string& file_name);
+void create_statistics_file(const Solution& _s, const std::string& path, const std::string& dataset);
 
 #endif

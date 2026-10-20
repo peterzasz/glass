@@ -18,22 +18,22 @@ int main(int argc,char **argv)
 {
     if(argc == 1)
     {
-        std::cout << "Argument needed: dataset and solver type and ordering";
+        std::cout << "Argument needed: dataset, solver type, ordering and statistics output path";
         return 1;
     }
     else if(argc == 2)
     {
-        std::cout << "Argument needed: solver type and ordering";
+        std::cout << "Argument needed: solver type, ordering, and statistics output path";
         return 1;
     }
     else if(argc == 3)
     {
-        std::cout << "Argument needed: ordering";
+        std::cout << "Argument needed: ordering and statistics output path";
         return 1;
     }
     else if(argc == 4)
     {
-        std::cout << "Argument needed: path to save statistics";
+        std::cout << "Argument needed: statistics output path";
         return 1;
     }
     else
@@ -102,18 +102,18 @@ int main(int argc,char **argv)
             auto start = std::chrono::high_resolution_clock::now();
 
             solver.solve();
-
-            write_solution(solver.get_solution(),"Solution/" + dataset + std::to_string(i) + "_solution.csv");
             
-            create_statistics_file( solver.get_solution(),
-                                    statistics_path,
-                                    "dataset_" + dataset + 
-                                    std::to_string(i) + "_" + method_code + "_" + 
-                                    std::to_string(area_order) + ".csv");
-
             auto end = std::chrono::high_resolution_clock::now();
 
             double seconds = std::chrono::duration<double>(end - start).count();
+
+            write_solution(solver.get_solution(),"Solution/" + dataset + std::to_string(i) + "_solution.csv");
+
+            create_statistics_file( solver.get_solution(),
+                                    statistics_path,
+                                    dataset + std::to_string(i));
+
+            
             
             std::cout << dataset << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
         }
