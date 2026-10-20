@@ -16,7 +16,6 @@ class Solver
         std::vector<Bin> _bins;
         Batch _batch;
         Solution _s;
-        long long can_cut_calls = 0;
 
         void set_waste(int node_id);
 
