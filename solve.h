@@ -6,7 +6,7 @@
 class Solver
 {
     public:
-        Solver(const std::vector<Bin>& bins, const Batch& batch);
+        Solver(const std::vector<Bin>& bins, const Batch& batch) : _bins(bins), _batch(batch) {}
 
         void solve();
 

@@ -3,9 +3,6 @@
 #include "cutter.h"
 #include <iostream>
 
-Solver::Solver(const std::vector<Bin>& bins, const Batch& batch) : _bins(bins), _batch(batch) {}
-
-
 void Solver::set_waste(int node_id)
 {
     Node node = _s.nodes[node_id];
