@@ -2,7 +2,6 @@
 #include "data.h"
 #include "cutter.h"
 #include "platefiller.h"
-#include <iostream>
 
 void Solver::set_waste(int node_id)
 {
@@ -64,9 +63,7 @@ void Solver::solve()
 
         PlateFiller filler = PlateFiller(_fill_method,_area_order,bin,_s,_batch);
 
-        int area_filled = filler.fill();
-
-        std::cout << "Plate " << bin.id << " filled. Portion filled: " << static_cast<double>(area_filled)/(bin.w*bin.h) << std::endl;
+        filler.fill();
 
         bool finished = true;
 

@@ -7,6 +7,13 @@
 #include <vector>
 #include <chrono>
 
+/*
+* arguments:
+*   dataset: A,B,X
+*   solver type: F, R, PLF, PLR
+*   ordering: 0,1
+*   statistics output path
+*/ 
 int main(int argc,char **argv)
 {
     if(argc == 1)
@@ -72,12 +79,17 @@ int main(int argc,char **argv)
         {
             method = FillMethod::PlacementLookaheadFastEval;
         }
+        else
+        {
+            std::cout << "Unknown method given.";
+            return 1;
+        }
 
-        bool area_order = argv[3];
+        bool area_order = argv[3] != std::string("0");
 
         std::string statistics_path = argv[4];
 
-        std::cout << "Starting on dataset: " << dataset << " with algorithm " << method_code << " with area ordering set to:" << (area_order ? true : false) << std::endl;
+        std::cout << "Starting on dataset " << dataset << " with algorithm " << method_code << " with area ordering set to: " << (area_order ? true : false) << std::endl;
 
         for(int i = 1; i <= dataset_size; i++)
         {
@@ -103,7 +115,7 @@ int main(int argc,char **argv)
 
             double seconds = std::chrono::duration<double>(end - start).count();
             
-            std::cout << "Dataset " << dataset << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
+            std::cout << dataset << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
         }
     }
 

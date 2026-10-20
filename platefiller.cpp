@@ -143,7 +143,7 @@ int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
 
 
             Change best_placement;
-            int best_val = 0;
+            int best_val = -1;
 
             for(auto& change: placements)
             {
@@ -153,7 +153,7 @@ int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
                 apply_change(_s,change);
                 int val = evaluation_filler.fill();
 
-                if(val >= best_val)
+                if(val > best_val)
                 {
                     best_placement = change;
                     best_val = val;

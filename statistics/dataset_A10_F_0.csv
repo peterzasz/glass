@@ -1,0 +1,14 @@
+platesUsed;6
+widthResidual;61
+residualArea;195810
+totalItemArea;71100239
+totalGeoLoss;44263951
+totalUtilization;61.63%
+
+plateId;usedArea;effectiveArea;utilization
+0;13649527;19260000;70.87%
+1;12800778;19260000;66.46%
+2;11316198;19260000;58.75%
+3;10173262;19260000;52.82%
+4;10749495;19260000;55.81%
+5;12410979;19064190;65.10%
