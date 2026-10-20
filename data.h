@@ -23,6 +23,7 @@ struct Batch
 {
     std::vector<Item> items;
     std::vector<Stack> stacks;
+    std::vector<int> order;
 };
 
 struct Defect

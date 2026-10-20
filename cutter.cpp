@@ -1923,6 +1923,7 @@ std::vector<Change> CutPlacementGenerator::get_placements(
         !allow_rotation);
 
     _s = _base_solution;
+    
     return placements;
 }
 

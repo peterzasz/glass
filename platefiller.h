@@ -2,6 +2,7 @@
 #define PLATEFILLER_H
 
 #include "data.h"
+#include "cutter.h"
 
 enum class FillMethod
 {
@@ -10,40 +11,43 @@ enum class FillMethod
     PlacementLookahead
 };
 
-class Filler
+class PlateFiller
 {
     public:
-        Filler(FillMethod method, bool decr_area_order, Bin& bin, Solution& s, Batch& batch) :  _method(method), 
-                                                                                                _decr_area_order(decr_area_order), 
-                                                                                                _bin(bin), 
-                                                                                                _s(s),
-                                                                                                _batch(batch) {}
+        PlateFiller(FillMethod method, bool decr_area_order, const Bin& bin, Solution& s, Batch& batch) :    _method(method), 
+                                                                                                        _decr_area_order(decr_area_order), 
+                                                                                                        _bin(bin), 
+                                                                                                        _s(s),
+                                                                                                        _batch(batch) {}
     
         int fill()
         {
             switch(_method)
             {
                 case FillMethod::Fast:
-                    return fast_fill();
+                    return cutter_fill(CutMethod::Fast);
                 case FillMethod::Rotation:
-                    return rotation_fill();
+                    return cutter_fill(CutMethod::Rotation);
                 case FillMethod::PlacementLookahead:
                     return placement_lookahead_fill();
             }
+
+            return 0;
         }
 
     private:
         FillMethod _method;
         bool _decr_area_order;
-        Bin& _bin;
+        const Bin& _bin;
         Solution& _s;
         Batch& _batch;
 
-        int fast_fill();
-        int rotation_fill();
+        int cutter_fill(CutMethod cut_method);
         int placement_lookahead_fill();
 
         NextItem next_item();
+        void initialize_stack_order();
+        void order_stack();
 };
 
 

@@ -1,6 +1,7 @@
 #include "solve.h"
 #include "data.h"
 #include "cutter.h"
+#include "platefiller.h"
 #include <iostream>
 
 void Solver::set_waste(int node_id)
@@ -63,33 +64,9 @@ void Solver::solve()
                     true
                 );
 
-        //create cutter
-        Cutter cutter = Cutter(_s,bin,CutMethod::Rotation);
+        PlateFiller filler = PlateFiller(FillMethod::PlacementLookahead,true,bin,_s,_batch);
 
-        NextItem next = next_item();
-
-        while(next.stack_id != -1)
-        {
-            bool prev_item_visited = false;
-
-            bool can_be_cut = cutter.cut(   _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]], // next item
-                                            _batch.stacks[next.stack_id].prev_item, // previous item id
-                                            prev_item_visited, // false
-                                            _s.roots.back() // starting node id = current root
-            );
-
-            if(!can_be_cut)
-            {
-                _batch.stacks[next.stack_id].at --;
-                _batch.stacks[next.stack_id].can_cut = false;
-            }
-            else
-            {
-                _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
-            }
-
-            next = next_item();
-        }
+        filler.fill();
 
         bool finished = true;
 
