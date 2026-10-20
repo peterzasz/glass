@@ -8,7 +8,8 @@ enum class FillMethod
 {
     Fast,
     Rotation,
-    PlacementLookahead
+    PlacementLookaheadRotationEval,
+    PlacementLookaheadFastEval,
 };
 
 class PlateFiller
@@ -28,8 +29,10 @@ class PlateFiller
                     return cutter_fill(CutMethod::Fast);
                 case FillMethod::Rotation:
                     return cutter_fill(CutMethod::Rotation);
-                case FillMethod::PlacementLookahead:
-                    return placement_lookahead_fill();
+                case FillMethod::PlacementLookaheadRotationEval:
+                    return placement_lookahead_fill(FillMethod::Rotation);
+                case FillMethod::PlacementLookaheadFastEval:
+                    return placement_lookahead_fill(FillMethod::Fast);
             }
 
             return 0;
@@ -43,7 +46,7 @@ class PlateFiller
         Batch& _batch;
 
         int cutter_fill(CutMethod cut_method);
-        int placement_lookahead_fill();
+        int placement_lookahead_fill(FillMethod evaluation_method);
 
         NextItem next_item();
         void initialize_stack_order();

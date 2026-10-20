@@ -106,11 +106,12 @@ int PlateFiller::cutter_fill(CutMethod method)
     return value;
 }
 
-int PlateFiller::placement_lookahead_fill()
+int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
 {
     int value = 0;
 
     CutPlacementGenerator placement_generator = CutPlacementGenerator(_s,_bin);
+    PlateFiller evaluation_filler = PlateFiller(evaluation_method,true,_bin,_s,_batch);
 
     initialize_stack_order();
     if(_decr_area_order)
@@ -150,7 +151,7 @@ int PlateFiller::placement_lookahead_fill()
                 Batch save_batch = _batch;
 
                 apply_change(_s,change);
-                int val = cutter_fill(CutMethod::Rotation);
+                int val = evaluation_filler.fill();
 
                 if(val >= best_val)
                 {

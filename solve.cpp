@@ -45,8 +45,6 @@ void Solver::set_waste(int node_id)
     }
 }
 
-
-
 void Solver::solve()
 {
     for(auto& bin: _bins)
@@ -64,9 +62,11 @@ void Solver::solve()
                     true
                 );
 
-        PlateFiller filler = PlateFiller(FillMethod::PlacementLookahead,true,bin,_s,_batch);
+        PlateFiller filler = PlateFiller(_fill_method,_area_order,bin,_s,_batch);
 
-        filler.fill();
+        int area_filled = filler.fill();
+
+        std::cout << "Plate " << bin.id << " filled. Portion filled: " << static_cast<double>(area_filled)/(bin.w*bin.h) << std::endl;
 
         bool finished = true;
 
