@@ -6,10 +6,9 @@
 
 enum class FillMethod
 {
-    Fast,
+    NoRotation,
     Rotation,
-    PlacementLookaheadRotationEval,
-    PlacementLookaheadFastEval,
+    PlacementLookahead
 };
 
 class PlateFiller
@@ -25,14 +24,12 @@ class PlateFiller
         {
             switch(_method)
             {
-                case FillMethod::Fast:
-                    return cutter_fill(CutMethod::Fast);
+                case FillMethod::NoRotation:
+                    return cutter_fill(CutMethod::NoRotation);
                 case FillMethod::Rotation:
                     return cutter_fill(CutMethod::Rotation);
-                case FillMethod::PlacementLookaheadRotationEval:
+                case FillMethod::PlacementLookahead:
                     return placement_lookahead_fill(FillMethod::Rotation);
-                case FillMethod::PlacementLookaheadFastEval:
-                    return placement_lookahead_fill(FillMethod::Fast);
             }
 
             return 0;

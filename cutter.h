@@ -6,7 +6,7 @@
 
 enum class CutMethod
 {
-    Fast,
+    NoRotation,
     Rotation
 };
 
@@ -25,24 +25,18 @@ class CutGeometry
         const Bin& _bin;
 
         bool defect_in_node(const Node& node, const Defect& defect) const;
+        bool no_defect_in_node(const Node& node) const;
         bool item_in_node(const Node& node, int x, int y, const Item& item) const;
         bool item_touches_defect(int x, int y, const Item& item, const Defect& defect) const;
-        bool x_cut_touches_defect(int x, const Defect& defect) const;
-        bool y_cut_touches_defect(int y, const Defect& defect) const;
-
-        bool can_cut(const Node& node, int x, int y, const Item& item) const;
-        bool no_defect_in_node(const Node& node) const;
-        bool x_cut_avoids_defects(int x, const Node& node) const;
-        bool y_cut_avoids_defects(int y, const Node& node) const;
-        bool valid_x_cut(int x, int y, int x_from, int y_from, const Node& node, const Item& item) const;
-        bool valid_y_cut( int x, int y, int x_from, int y_from, const Node& node, const Item& item) const;
-        bool valid_4_cut(int node_h, int item_h) const;
-        bool passes_min_waste_constraint(int coord, int coord_from) const;
-        bool rotations_valid_y_cut(const Node& node, const Item& item, int y) const;
-        bool rotations_valid_x_cut(const Node& node, const Item& item, int x, int x_from) const;
+        bool vertical_cut_touches_defect(int x, const Defect& defect) const;
+        bool horizontal_cut_touches_defect(int y, const Defect& defect) const;
         bool can_do_bottom_4_cut(const Node& node, const Item& item) const;
         bool can_do_top_4_cut(const Node& node, const Item& item) const;
-        bool passes_4_cut_min_waste_constraint(const Node& node, const Item& item) const;
+
+        bool can_cut_vertical_strip(const Item& item, const Node& node, int x, int x_from) const;
+        bool can_cut_horizontal_strip(const Item& item, const Node& node, int y, int y_from) const;
+        bool can_subdivide_by_vertical_strip(const Item& item, const Node& node, int x, int x_from, int x_to) const;
+        bool can_subdivide_by_horizontal_strip(const Item& item, const Node& node, int y, int y_from, int y_to) const;
 };
 
 class Cutter : private CutGeometry
@@ -55,11 +49,10 @@ class Cutter : private CutGeometry
         {
             switch(_method)
             {
-                case CutMethod::Fast:
-                    return fast_cut(item, prev_item_id, prev_item_visited, node_id);
-
+                case CutMethod::NoRotation:
+                    return rotation_cut(item, prev_item_id, prev_item_visited, node_id,true);
                 case CutMethod::Rotation:
-                    return rotation_cut(item, prev_item_id, prev_item_visited, node_id, false);
+                    return rotation_cut(item,prev_item_id,prev_item_visited,node_id,false);
             }
 
             return false;
@@ -68,10 +61,7 @@ class Cutter : private CutGeometry
     private:
         const CutMethod _method;
 
-        bool fast_cut(Item& item, int prev_item_id, bool& prev_item_visited, int node_id);
-        bool fast_try_vertical_cut(Item& item, int prev_item_id, bool& prev_item_visited, int node_id);
-        bool fast_try_horizontal_cut(Item& item, int prev_item_id, bool& prev_item_visited, int node_id);
-        bool fast_try_4_cut(Item& item, int prev_item_id, bool& prev_item_visited, int node_id);
+        int which_child(int node_id);
 
         bool rotation_cut(
             Item& item,
@@ -79,102 +69,102 @@ class Cutter : private CutGeometry
             bool& prev_item_visited,
             int node_id,
             bool orientation_locked);
-
+        
         bool rotation_try_vertical_cut(
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
             int node_id,
-            bool orientation_locked);
+            bool orientation_locked
+        );
 
         bool rotation_try_horizontal_cut(
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
             int node_id,
-            bool orientation_locked);
+            bool orientation_locked
+        );
 
         bool rotation_try_4_cut(
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
             int node_id,
-            bool orientation_locked);
+            bool orientation_locked
+        );
 
         bool rotation_try_subdivide_node(
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
             int node_id,
-            bool orientation_locked);
-
-        bool rotation_try_subdivide_orientation(
-            Item& item,
-            int prev_item_id,
-            bool& prev_item_visited,
-            int node_id);
+            bool orientation_locked
+        );
 };
 
-class CutPlacementGenerator : private CutGeometry
+class PlacementGenerator : private CutGeometry
 {
     public:
-        CutPlacementGenerator(Solution& solution, const Bin& bin)
+        PlacementGenerator(Solution& solution, const Bin& bin)
             : CutGeometry(solution, bin) {}
 
-        std::vector<Change> get_placements(
-            Item& item,
-            int prev_item_id,
-            int node_id,
-            bool allow_rotation = true);
+        std::vector<Change> get_placements(Item& item, int prev_item_id, bool& prev_item_visited, int node_id)
+        {
+            std::vector<Change> placements;
+            Change change;
+
+            generate_placements(item, prev_item_id, prev_item_visited, node_id,change,placements);
+
+            return placements;
+        }
 
     private:
-        Solution _base_solution;
 
-        void generate(
-            std::vector<Change>& placements,
+        int which_child(int node_id);
+
+        void generate_placements(
             Item& item,
             int prev_item_id,
             bool& prev_item_visited,
             int node_id,
-            bool orientation_locked);
-
+            Change change,
+            std::vector<Change>& placements);
+        
         void try_vertical_cut(
-            std::vector<Change>& placements,
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
-            int node_id);
+            int node_id,
+            Change change,
+            std::vector<Change>& placements
+        );
 
         void try_horizontal_cut(
-            std::vector<Change>& placements,
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
-            int node_id);
+            int node_id,
+            Change change,
+            std::vector<Change>& placements
+        );
 
         void try_4_cut(
-            std::vector<Change>& placements,
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
-            int node_id);
+            int node_id,
+            Change change,
+            std::vector<Change>& placements
+        );
 
         void try_subdivide_node(
-            std::vector<Change>& placements,
             Item& item,
-            int prev_item_id,
             bool& prev_item_visited,
-            int node_id);
+            int node_id,
+            Change change,
+            std::vector<Change>& placements
+        );
 
-        std::vector<int> possible_x_cut_positions(const Item& item, const Node& node) const;
-        std::vector<int> possible_y_cut_positions(const Item& item, const Node& node) const;
-        std::vector<int> possible_x_subdivision_positions(const Item& item, const Node& node) const;
-        std::vector<int> possible_y_subdivision_positions(const Item& item, const Node& node) const;
-
-        void record_placement(std::vector<Change>& placements) const;
-        static bool same_node(const Node& a, const Node& b);
+        std::vector<int> possible_x_coords_for_vertical_cut(const Item& item, const Node& node, int x_from, int x_to) const;
+        std::vector<int> possible_y_coords_for_horizontal_cut(const Item& item, const Node& node, int y_from, int y_to) const;
+        std::vector<int> possible_x_coords_for_subdivision(const Item& item, const Node& node, int x_from, int x_to) const;
+        std::vector<int> possible_y_coords_for_subdivision(const Item& item, const Node& node, int y_from, int y_to) const;
 };
 
-void apply_change(Solution& solution, const Change& change);
+void apply_change(Solution& s, const Change& c);
 
 #endif

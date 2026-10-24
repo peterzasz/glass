@@ -106,12 +106,12 @@ int PlateFiller::cutter_fill(CutMethod method)
     return value;
 }
 
-int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
+int PlateFiller::placement_lookahead_fill(FillMethod eval_method)
 {
     int value = 0;
 
-    CutPlacementGenerator placement_generator = CutPlacementGenerator(_s,_bin);
-    PlateFiller evaluation_filler = PlateFiller(evaluation_method,true,_bin,_s,_batch);
+    PlacementGenerator placement_generator(_s,_bin);
+    PlateFiller eval_filler(eval_method,true,_bin,_s,_batch);
 
     initialize_stack_order();
     if(_decr_area_order)
@@ -123,13 +123,33 @@ int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
 
     while(next.stack_id != -1)
     {
+        bool prev_item_visited = false;
 
-        Item it = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
+        Item item = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
 
-        std::vector<Change> placements = placement_generator.get_placements(it,
-                                                                            _batch.stacks[next.stack_id].prev_item,
-                                                                            _s.roots.back());
+        std::vector<Change> placements = placement_generator.get_placements(   
+            item,                                   // next item
+            _batch.stacks[next.stack_id].prev_item, // previous item id
+            prev_item_visited,                      // false
+            _s.roots.back()                         // starting node id = current root
+        );
 
+        if(item.w != item.h)
+        {
+            Item rotated = item;
+            std::swap(rotated.w,rotated.h);
+
+            prev_item_visited = false;
+
+            std::vector<Change> rotated_placements = placement_generator.get_placements(
+                rotated,                                // next item rotated
+                _batch.stacks[next.stack_id].prev_item, // previous item id
+                prev_item_visited,                      // false
+                _s.roots.back()                         // starting node id = current root
+            );
+
+            placements.insert(placements.end(),rotated_placements.begin(),rotated_placements.end());
+        }
 
         if(placements.empty())
         {
@@ -139,31 +159,31 @@ int PlateFiller::placement_lookahead_fill(FillMethod evaluation_method)
         else
         {
             _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
-            value += it.w*it.h;
+            value += item.w*item.h;
 
+            int max_val = -1;
+            Change best_change;
 
-            Change best_placement;
-            int best_val = -1;
+            Solution save_solution = _s;
+            Batch save_batch = _batch;
 
-            for(auto& change: placements)
+            for(const auto& change : placements)
             {
-                Solution save_solution = _s;
-                Batch save_batch = _batch;
-
                 apply_change(_s,change);
-                int val = evaluation_filler.fill();
 
-                if(val > best_val)
+                int val = eval_filler.fill();
+                
+                if(val > max_val)
                 {
-                    best_placement = change;
-                    best_val = val;
+                    max_val = val;
+                    best_change = change;
                 }
 
                 _s = save_solution;
                 _batch = save_batch;
             }
 
-            apply_change(_s,best_placement);
+            apply_change(_s,best_change);
         }
 
         if(_decr_area_order)

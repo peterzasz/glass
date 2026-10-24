@@ -8,6 +8,19 @@ bool CutGeometry::defect_in_node(const Node& node, const Defect& defect) const
            defect.y + defect.h <= node.y + node.h;
 }
 
+bool CutGeometry::no_defect_in_node(const Node& node) const
+{
+    for(auto& defect: _bin.defects)
+    {
+        if(defect_in_node(node,defect))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool CutGeometry::item_in_node(const Node& node, int x, int y, const Item& item) const
 {
     return node.x <= x &&
@@ -28,189 +41,177 @@ bool CutGeometry::item_touches_defect(
            defect.y < y + item.h;
 }
 
-bool CutGeometry::x_cut_touches_defect(int x, const Defect& defect) const
+bool CutGeometry::vertical_cut_touches_defect(int x, const Defect& defect) const
 {
     return defect.x < x && x < defect.x + defect.w;
 }
 
-bool CutGeometry::y_cut_touches_defect(int y, const Defect& defect) const
+bool CutGeometry::horizontal_cut_touches_defect(int y, const Defect& defect) const
 {
     return defect.y < y && y < defect.y + defect.h;
 }
 
-bool CutGeometry::can_cut(const Node& node, int x, int y, const Item& item) const
+bool CutGeometry::can_cut_vertical_strip(const Item& item, const Node& node, int x, int x_from) const
 {
-    if(!item_in_node(node, x, y, item))
+    if(x>x_from && (x-x_from < min_waste || (node.cut == 0 && x-x_from < min_1_cut)) )
     {
         return false;
     }
 
-    for(const Defect& defect : _bin.defects)
+    if( x + item.w < node.x + node.w && (node.x + node.w - x - item.w < min_waste ||
+                                        (node.cut == 0 && 
+                                         node.x + node.w - x - item.w  < min_1_cut)))
     {
-        if(defect_in_node(node, defect) && item_touches_defect(x, y, item, defect))
+        return false;
+    }
+
+    for(const auto& defect: _bin.defects)
+    {
+        if(!defect_in_node(node,defect))
+        {
+            continue;
+        }
+
+        if( x > x_from && vertical_cut_touches_defect(x,defect) )
+        {
+            return false;
+        }
+
+        if( x + item.w < node.x + node.w && vertical_cut_touches_defect(x + item.w,defect) )
         {
             return false;
         }
     }
 
-    if(node.cut == 4)
+    if(node.cut == 0)
     {
-        return item.w == node.w && item.h == node.h;
+        for(int y = 0; y <= node.h-item.h; ++y)
+        {
+            if((y == 0 || (y>=min_2_cut)) && (y+item.h == node.h || (node.h-y-item.h >= min_2_cut)) )
+            {
+                bool item_touches_any_defect = false;
+
+                for(const auto& defect : _bin.defects )
+                {
+                    if(item_touches_defect(x,y,item,defect))
+                    {
+                        item_touches_any_defect = true;
+
+                        break;
+                    }
+                }
+
+                if(!item_touches_any_defect)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    else // node.cut == 2
+    {
+        if(node.h != item.h && node.h-item.h < min_waste)
+        {
+            return false;
+        }
+
+        bool item_touches_any_defect = false;
+
+        for(const auto& defect: _bin.defects)
+        {
+            if(item_touches_defect(x,node.y,item,defect))
+            {
+                item_touches_any_defect = true;
+                break;
+            }
+        }
+
+        if(!item_touches_any_defect)
+        {
+            return true;
+        }
+
+        item_touches_any_defect = false;
+
+        for(const auto& defect: _bin.defects)
+        {
+            if(item_touches_defect(x,node.y+node.h-item.h,item,defect))
+            {
+                item_touches_any_defect = true;
+                break;
+            }
+        }
+
+        if(!item_touches_any_defect)
+        {
+            return true;
+        }
     }
 
-    if(node.cut % 2 == 0)
+    return false;
+}
+
+bool CutGeometry::can_cut_horizontal_strip(const Item& item, const Node& node, int y, int y_from) const
+{
+    if((y > y_from && y-y_from < min_2_cut) || (y + item.h < node.h && node.h-y-item.h < min_2_cut))
     {
-        if(!x_cut_avoids_defects(x, node) || !x_cut_avoids_defects(x + item.w, node))
+        return false;
+    }
+
+    for(const auto& defect: _bin.defects)
+    {
+        if(!defect_in_node(node,defect))
+        {
+            continue;
+        }
+
+        if( y > y_from && horizontal_cut_touches_defect(y,defect) )
+        {
+            return false;
+        }
+
+        if( y + item.h < node.h && horizontal_cut_touches_defect(y + item.h,defect) )
         {
             return false;
         }
     }
-    else
+
+    for(int x = node.x; x <= node.x + node.w - item.w; ++x)
     {
-        if(!y_cut_avoids_defects(y, node) || !y_cut_avoids_defects(y + item.h, node))
+        if(!((x>node.x && x-node.x < min_waste) ||
+             ( x + item.w < node.x + node.w && node.x + node.w - x - item.w < min_waste)))
         {
-            return false;
+            bool item_touches_any_defect = false;
+
+            for(const auto& defect: _bin.defects)
+            {
+                if(item_touches_defect(x,y,item,defect))
+                {
+                    item_touches_any_defect = true;
+                    break;
+                }
+            }
+
+            if(!item_touches_any_defect)
+            {
+                return true;
+            }
         }
     }
 
-    // A fourth-level cut can only separate the item from the bottom or top
-    // of a full-width third-level strip.
-    if(node.cut == 3)
-    {
-        if(node.x != x || node.x + node.w != x + item.w)
-        {
-            return false;
-        }
-
-        if(node.y != y && node.y + node.h != y + item.h)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool CutGeometry::no_defect_in_node(const Node& node) const
-{
-    for(const Defect& defect : _bin.defects)
-    {
-        if(defect_in_node(node, defect))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool CutGeometry::x_cut_avoids_defects(int x, const Node& node) const
-{
-    for(const Defect& defect : _bin.defects)
-    {
-        if(defect_in_node(node, defect) && x_cut_touches_defect(x, defect))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool CutGeometry::y_cut_avoids_defects(int y, const Node& node) const
-{
-    for(const Defect& defect : _bin.defects)
-    {
-        if(defect_in_node(node, defect) && y_cut_touches_defect(y, defect))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool CutGeometry::valid_x_cut(
-    int x,
-    int y,
-    int x_from,
-    int y_from,
-    const Node& node,
-    const Item& item) const
-{
-    return !(
-        (x > x_from && x - x_from < min_waste) ||
-        (x + item.w < node.x + node.w && node.x + node.w - x - item.w < min_waste) ||
-        (y > y_from && y - y_from < min_waste) ||
-        (y + item.h < node.y + node.h && node.y + node.h - y - item.h < min_waste) ||
-        (node.cut == 0 && x > x_from &&
-            (x - x_from < min_1_cut || x - x_from > max_1_cut)) ||
-        (node.cut == 0 && (item.w < min_1_cut || item.w > max_1_cut))
-    );
-}
-
-bool CutGeometry::valid_y_cut(
-    int x,
-    int y,
-    int x_from,
-    int y_from,
-    const Node& node,
-    const Item& item) const
-{
-    return !(
-        (x > x_from && x - x_from < min_waste) ||
-        (x + item.w < node.x + node.w && node.x + node.w - x - item.w < min_waste) ||
-        (y > y_from && y - y_from < min_waste) ||
-        (y + item.h < node.y + node.h && node.y + node.h - y - item.h < min_waste) ||
-        (node.cut == 1 && item.h < min_2_cut)
-    );
-}
-
-bool CutGeometry::valid_4_cut(int node_h, int item_h) const
-{
-    return node_h - item_h >= min_waste;
-}
-
-bool CutGeometry::passes_min_waste_constraint(int coord, int coord_from) const
-{
-    return !(coord > coord_from && coord - coord_from < min_waste);
-}
-
-bool CutGeometry::rotations_valid_y_cut(
-    const Node& node,
-    const Item& item,
-    int y) const
-{
-    return item_in_node(node, node.x, y, item) &&
-           !(y + item.h < node.y + node.h &&
-             node.y + node.h - y - item.h < min_waste) &&
-           !(node.cut == 1 && item.h < min_2_cut) &&
-           y_cut_avoids_defects(y, node) &&
-           y_cut_avoids_defects(y + item.h, node);
-}
-
-bool CutGeometry::rotations_valid_x_cut(
-    const Node& node,
-    const Item& item,
-    int x,
-    int x_from) const
-{
-    return item_in_node(node, x, node.y, item) &&
-           !(x + item.w < node.x + node.w &&
-             node.x + node.w - x - item.w < min_waste) &&
-           !(node.cut == 0 && (item.w < min_1_cut || item.w > max_1_cut)) &&
-           !(node.cut == 0 && x > x_from &&
-             (x - x_from < min_1_cut || x - x_from > max_1_cut)) &&
-           x_cut_avoids_defects(x, node) &&
-           x_cut_avoids_defects(x + item.w, node);
+    return false;
 }
 
 bool CutGeometry::can_do_bottom_4_cut(const Node& node, const Item& item) const
 {
-    for(const Defect& defect : _bin.defects)
+    if(node.h - item.h < min_waste)
     {
-        if(defect_in_node(node, defect) &&
-           item_touches_defect(node.x, node.y, item, defect))
+        return false;
+    }
+
+    for(const auto& defect: _bin.defects)
+    {
+        if(item_touches_defect(node.x,node.y,item,defect))
         {
             return false;
         }
@@ -221,10 +222,14 @@ bool CutGeometry::can_do_bottom_4_cut(const Node& node, const Item& item) const
 
 bool CutGeometry::can_do_top_4_cut(const Node& node, const Item& item) const
 {
-    for(const Defect& defect : _bin.defects)
+    if(node.h - item.h < min_waste)
     {
-        if(defect_in_node(node, defect) &&
-           item_touches_defect(node.x, node.y + node.h - item.h, item, defect))
+        return false;
+    }
+
+    for(const auto& defect: _bin.defects)
+    {
+        if(item_touches_defect(node.x,node.y+node.h-item.h,item,defect))
         {
             return false;
         }
@@ -233,9 +238,176 @@ bool CutGeometry::can_do_top_4_cut(const Node& node, const Item& item) const
     return true;
 }
 
-bool CutGeometry::passes_4_cut_min_waste_constraint(
-    const Node& node,
-    const Item& item) const
+bool CutGeometry::can_subdivide_by_vertical_strip(const Item& item, const Node& node, int x, int x_from, int x_to) const
 {
-    return node.h - item.h >= min_waste;
+    int min_remainder = node.cut == 1 ? min_1_cut : min_waste;
+
+    if((x > x_from && (x - x_from < min_remainder)) || (x < x_to && ( x_to - x < min_remainder)) )
+    {
+        return false;
+    }
+
+    if(x == x_from)
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && vertical_cut_touches_defect(x+item.w,defect))
+            {
+                return false;
+            }
+        }
+    }
+    else if(x == x_to)
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && vertical_cut_touches_defect(x,defect))
+            {
+                return false;
+            }
+        }
+    }
+    else
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && (vertical_cut_touches_defect(x,defect) || vertical_cut_touches_defect(x+item.w,defect)))
+            {
+                return false;
+            }
+        }
+    }
+
+    if(node.cut == 1)
+    {
+        for(int y = 0; y <= node.h-item.h; ++y)
+        {
+            if((y>0 && y < min_2_cut) || (y+item.h < node.h && node.h-y-item.h < min_2_cut))
+            {
+                continue;
+            }
+
+            bool item_touches_any_defect = false;
+
+            for(auto& defect: _bin.defects)
+            {
+                if(item_touches_defect(x,y,item,defect))
+                {
+                    item_touches_any_defect = true;
+                    break;
+                }
+            }
+
+            if(!item_touches_any_defect)
+            {
+                return true;
+            }
+        }
+    }
+    else
+    {
+        if(node.h != item.h && node.h-item.h < min_waste)
+        {
+            return false;
+        }
+
+        bool item_touches_any_defect = false;
+
+        for(auto& defect: _bin.defects)
+        {
+            if(item_touches_defect(x,node.y,item,defect))
+            {
+                item_touches_any_defect = true;
+                break;
+            }
+        }
+
+        if(!item_touches_any_defect)
+        {
+            return true;
+        }
+
+        item_touches_any_defect = false;
+
+        for(auto& defect: _bin.defects)
+        {
+            if(item_touches_defect(x,node.y + node.h-item.h,item,defect))
+            {
+                item_touches_any_defect = true;
+                break;
+            }
+        }
+
+        if(!item_touches_any_defect)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool CutGeometry::can_subdivide_by_horizontal_strip(const Item& item, const Node& node, int y, int y_from, int y_to) const
+{
+    if((y>y_from && y-y_from < min_2_cut) || (y<y_to && y_to-y < min_2_cut))
+    {
+        return false;
+    }
+
+    if(y == y_from)
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && horizontal_cut_touches_defect(y+item.h,defect))
+            {
+                return false;
+            }
+        }
+    }
+    else if(y == y_to)
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && horizontal_cut_touches_defect(y,defect))
+            {
+                return false;
+            }
+        }
+    }
+    else
+    {
+        for(auto& defect: _bin.defects)
+        {
+            if(defect_in_node(node,defect) && (horizontal_cut_touches_defect(y,defect) || horizontal_cut_touches_defect(y+item.h,defect)))
+            {
+                return false;
+            }
+        }
+    }
+
+    for(int x = node.x; x <= node.x + node.w-item.w; ++x)
+    {
+        if((x>node.x && x-node.x < min_waste) || (x+item.w < node.x + node.w && node.x + node.w-x-item.w < min_waste))
+        {
+            continue;
+        }
+
+        bool item_touches_any_defect = false;
+
+        for(auto& defect: _bin.defects)
+        {
+            if(item_touches_defect(x,y,item,defect))
+            {
+                item_touches_any_defect = true;
+                break;
+            }
+        }
+
+        if(!item_touches_any_defect)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }

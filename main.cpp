@@ -10,7 +10,7 @@
 /*
 * arguments:
 *   dataset: A,B,X
-*   solver type: F, R, PLF, PLR
+*   solver type: F, R, PL
 *   ordering: 0,1
 *   statistics output path
 */ 
@@ -65,19 +65,15 @@ int main(int argc,char **argv)
 
         if(method_code == "F")
         {
-            method = FillMethod::Fast;
+            method = FillMethod::NoRotation;
         }
         else if(method_code == "R")
         {
             method = FillMethod::Rotation;
         }
-        else if(method_code == "PLR")
+        else if(method_code == "PL")
         {
-            method = FillMethod::PlacementLookaheadRotationEval;
-        }
-        else if(method_code == "PLF")
-        {
-            method = FillMethod::PlacementLookaheadFastEval;
+            method = FillMethod::PlacementLookahead;
         }
         else
         {
@@ -111,9 +107,8 @@ int main(int argc,char **argv)
 
             create_statistics_file( solver.get_solution(),
                                     statistics_path,
-                                    dataset + std::to_string(i));
-
-            
+                                    dataset + std::to_string(i),
+                                    seconds);
             
             std::cout << dataset << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
         }

@@ -72,7 +72,7 @@ struct Solution
         int type,
         int cut_level,
         int parent_id,
-        bool root,
+        bool root = false,
         int child_position = -1)
     {
         const int node_id = static_cast<int>(nodes.size());
@@ -122,7 +122,7 @@ struct NextItem
 struct NodeChange
 {
     int node_id;
-    Node new_node;
+    Node node;
 };
 
 struct Change

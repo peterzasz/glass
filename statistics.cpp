@@ -9,7 +9,8 @@
 void create_statistics_file(
     const Solution& s,
     const std::string& path,
-    const std::string& dataset
+    const std::string& dataset,
+    double seconds
 )
 {
     std::filesystem::create_directories(path);
@@ -21,7 +22,7 @@ void create_statistics_file(
         return;
     }
 
-    file << "instanceId;validSolution;nPlates;totalGeoLoss;widthResidual\n";
+    file << "instanceId;validSolution;nPlates;totalGeoLoss;widthResidual;runTime\n";
 
     int nPlates = s.roots.size();
     
@@ -50,5 +51,5 @@ void create_statistics_file(
 
     double totalGeoLoss = (1 - static_cast<double>(totalItemsArea)/totalPlatesArea)*100;
 
-    file << dataset << ";" << 1 << ";" << nPlates << ";" << totalGeoLoss << "%" << ";" << widthResidual;
+    file << dataset << ";" << 1 << ";" << nPlates << ";" << totalGeoLoss << "%" << ";" << widthResidual << ";" << seconds << " s";
 }
