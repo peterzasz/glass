@@ -6,12 +6,13 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <sstream>
 
 /*
 * arguments:
-*   dataset: A,B,X
-*   solver type: F, R, PL
-*   ordering: 0,1
+*   dataset: A,B,X followed by id
+*   solver type: F, R, PL, PL2, OL
+*   ordering: NO, DA, WH, HW, ALL
 *   statistics output path
 */ 
 int main(int argc,char **argv)
@@ -40,26 +41,6 @@ int main(int argc,char **argv)
     {
         std::string dataset = argv[1];
 
-        int dataset_size;
-
-        if(dataset == "A")
-        {
-            dataset_size = 20;
-        }
-        else if(dataset == "B")
-        {
-            dataset_size = 15;
-        }
-        else if(dataset == "X")
-        {
-            dataset_size = 15;
-        }
-        else
-        {
-            std::cout << "Unknown dataset given.";
-            return 1;
-        }
-
         std::string method_code = argv[2];
         FillMethod method;
 
@@ -75,43 +56,115 @@ int main(int argc,char **argv)
         {
             method = FillMethod::PlacementLookahead;
         }
+        else if(method_code == "OL")
+        {
+            method = FillMethod::OrderLookahead;
+        }
+        else if(method_code == "PL2")
+        {
+            method = FillMethod::PlacementLookahead2;
+        }
         else
         {
             std::cout << "Unknown method given.";
             return 1;
         }
 
-        bool area_order = argv[3] != std::string("0");
+        std::string ordering_code = argv[3];
+        std::vector<FillerType> fillers;
+
+        if(ordering_code == "NO")
+        {
+            fillers.push_back(FillerType{
+                Ordering::NoOrder,
+                method
+            });
+        }
+        else if(ordering_code == "DA")
+        {
+            fillers.push_back(FillerType{
+                Ordering::AreaOrder,
+                method
+            });
+        }
+        else if(ordering_code == "WH")
+        {
+            fillers.push_back(FillerType{
+                Ordering::WidthHeight,
+                method
+            });
+        }
+        else if(ordering_code == "HW")
+        {
+            fillers.push_back(FillerType{
+                Ordering::HeightWidth,
+                method
+            });
+        }
+        else if(ordering_code == "ALL")
+        {
+            fillers.push_back(FillerType{
+                Ordering::NoOrder,
+                method
+            });
+
+            fillers.push_back(FillerType{
+                Ordering::AreaOrder,
+                method
+            });
+
+            fillers.push_back(FillerType{
+                Ordering::HeightWidth,
+                method
+            });
+
+            fillers.push_back(FillerType{
+                Ordering::WidthHeight,
+                method
+            });
+        }
+        else
+        {
+            std::cout << "Unknown ordering code given.";
+            return 1;
+        }
 
         std::string statistics_path = argv[4];
 
-        std::cout << "Starting on dataset " << dataset << " with algorithm " << method_code << " with area ordering set to: " << (area_order ? true : false) << std::endl;
+        std::cout << "Starting on dataset " << dataset << " with algorithm " << method_code << " with ordering set to " << ordering_code << std::endl;
 
-        for(int i = 1; i <= dataset_size; i++)
-        {
-            Batch batch = read_batch("dataset_" + dataset + "/" + dataset + std::to_string(i) + "_batch.csv");
-            std::vector<Bin> bins = read_bins("dataset_" + dataset + "/" + dataset + std::to_string(i) + "_defects.csv");
+        std::stringstream ss;
+        std::string batch_path;
+        std::string defects_path;
 
-            Solver solver(bins,batch,method,area_order);
+        ss << "dataset_" << dataset[0] << "/" << dataset << "_batch.csv";
+        ss >> batch_path;
+        ss.clear();
+        ss << "dataset_" << dataset[0] << "/" << dataset << "_defects.csv";
+        ss >> defects_path;
+
+        Batch batch = read_batch(batch_path);
+        std::vector<Bin> bins = read_bins(defects_path);
+
+        Solver solver(bins,batch,fillers);
 
 
-            auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::high_resolution_clock::now();
 
-            solver.solve();
-            
-            auto end = std::chrono::high_resolution_clock::now();
+        solver.solve();
+        
+        auto end = std::chrono::high_resolution_clock::now();
 
-            double seconds = std::chrono::duration<double>(end - start).count();
+        double seconds = std::chrono::duration<double>(end - start).count();
 
-            write_solution(solver.get_solution(),"Solution/" + dataset + std::to_string(i) + "_solution.csv");
+        write_solution(solver.get_solution(),"Solution/" + dataset + "_solution.csv");
 
-            create_statistics_file( solver.get_solution(),
-                                    statistics_path,
-                                    dataset + std::to_string(i),
-                                    seconds);
-            
-            std::cout << dataset << std::to_string(i) << " done in " << std::to_string(seconds) << " seconds.\n";
-        }
+        create_statistics_file( solver.get_solution(),
+                                statistics_path,
+                                dataset,
+                                seconds);
+        
+        std::cout << dataset << " done in " << std::to_string(seconds) << " seconds.\n";
     }
 
     return 0;

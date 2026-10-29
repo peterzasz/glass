@@ -27,7 +27,7 @@ void PlateFiller::initialize_stack_order()
     }
 }
 
-void PlateFiller::order_stack()
+void PlateFiller::order_stack_by_area()
 {
     std::sort(
         _batch.order.begin(),
@@ -58,6 +58,82 @@ void PlateFiller::order_stack()
     );
 }
 
+void PlateFiller::order_stack_by_height_width()
+{
+    std::sort(
+        _batch.order.begin(),
+        _batch.order.end(),
+        [this](int a, int b)
+        {
+            bool a_finished = _batch.stacks[a].at >= _batch.stacks[a].item_ids.size();
+            bool b_finished = _batch.stacks[b].at >= _batch.stacks[b].item_ids.size();
+
+            if(a_finished != b_finished)
+            {
+                return !a_finished;
+            }
+
+            if(a_finished)
+            {
+                return false;
+            }
+
+            const Item& item_a =
+                _batch.items[_batch.stacks[a].item_ids[_batch.stacks[a].at]];
+
+            const Item& item_b =
+                _batch.items[_batch.stacks[b].item_ids[_batch.stacks[b].at]];
+
+            if(item_a.h == item_b.h)
+            {
+                return item_a.w > item_b.w;
+            }
+            else
+            {
+                return item_a.h > item_b.h;
+            }
+        }
+    );
+}
+
+void PlateFiller::order_stack_by_width_height()
+{
+    std::sort(
+        _batch.order.begin(),
+        _batch.order.end(),
+        [this](int a, int b)
+        {
+            bool a_finished = _batch.stacks[a].at >= _batch.stacks[a].item_ids.size();
+            bool b_finished = _batch.stacks[b].at >= _batch.stacks[b].item_ids.size();
+
+            if(a_finished != b_finished)
+            {
+                return !a_finished;
+            }
+
+            if(a_finished)
+            {
+                return false;
+            }
+
+            const Item& item_a =
+                _batch.items[_batch.stacks[a].item_ids[_batch.stacks[a].at]];
+
+            const Item& item_b =
+                _batch.items[_batch.stacks[b].item_ids[_batch.stacks[b].at]];
+
+            if(item_a.w == item_b.w)
+            {
+                return item_a.h > item_b.h;
+            }
+            else
+            {
+                return item_a.w > item_b.w;
+            }
+        }
+    );
+}
+
 int PlateFiller::cutter_fill(CutMethod method)
 {
     int value = 0;
@@ -65,9 +141,14 @@ int PlateFiller::cutter_fill(CutMethod method)
     Cutter cutter = Cutter(_s,_bin,method);
 
     initialize_stack_order();
-    if(_decr_area_order)
+    switch(_filler_type.ordering)
     {
-        order_stack();
+        case Ordering::AreaOrder:
+            order_stack_by_area();
+        case Ordering::HeightWidth:
+            order_stack_by_height_width();
+        case Ordering::WidthHeight:
+            order_stack_by_width_height();
     }
 
     NextItem next = next_item();
@@ -93,11 +174,22 @@ int PlateFiller::cutter_fill(CutMethod method)
         {
             _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
             value += it.w*it.h;
+            
+            if(_items_placed != -1)
+            {
+                _items_placed++;
+                std::cout << _items_placed << "/" << _batch.items.size() << " items placed.\n";
+            }
         }
 
-        if(_decr_area_order)
+        switch(_filler_type.ordering)
         {
-            order_stack();
+            case Ordering::AreaOrder:
+                order_stack_by_area();
+            case Ordering::HeightWidth:
+                order_stack_by_height_width();
+            case Ordering::WidthHeight:
+                order_stack_by_width_height();
         }
 
         next = next_item();
@@ -106,17 +198,26 @@ int PlateFiller::cutter_fill(CutMethod method)
     return value;
 }
 
-int PlateFiller::placement_lookahead_fill(FillMethod eval_method)
+int PlateFiller::placement_lookahead_fill(FillerType eval_method)
 {
     int value = 0;
 
     PlacementGenerator placement_generator(_s,_bin);
-    PlateFiller eval_filler(eval_method,true,_bin,_s,_batch);
+    
+    int items_placed = -1;
+    PlateFiller eval_filler = PlateFiller(eval_method,_bin,_s,_batch,items_placed);
+
+    
 
     initialize_stack_order();
-    if(_decr_area_order)
+    switch(_filler_type.ordering)
     {
-        order_stack();
+        case Ordering::AreaOrder:
+            order_stack_by_area();
+        case Ordering::HeightWidth:
+            order_stack_by_height_width();
+        case Ordering::WidthHeight:
+            order_stack_by_width_height();
     }
 
     NextItem next = next_item();
@@ -184,14 +285,132 @@ int PlateFiller::placement_lookahead_fill(FillMethod eval_method)
             }
 
             apply_change(_s,best_change);
+
+            if(_items_placed != -1)
+            {
+                _items_placed++;
+                std::cout << _items_placed << "/" << _batch.items.size() << " items placed.\n";
+            }
         }
 
-        if(_decr_area_order)
+        switch(_filler_type.ordering)
         {
-            order_stack();
+            case Ordering::AreaOrder:
+                order_stack_by_area();
+            case Ordering::HeightWidth:
+                order_stack_by_height_width();
+            case Ordering::WidthHeight:
+                order_stack_by_width_height();
         }
 
         next = next_item();
+    }
+
+    return value;
+}
+
+int PlateFiller::dynamic_order_fill(FillerType eval_method)
+{
+    int value = 0;
+
+    PlacementGenerator placement_generator(_s,_bin);
+    int items_placed = -1;
+    PlateFiller eval_filler =  PlateFiller(eval_method,_bin,_s,_batch,items_placed);
+
+    while(true)
+    {
+        bool can_place = false;
+
+        int max_val = -1;
+        Change best_change;
+        int best_stack;
+
+        for(int i = 0; i < _batch.stacks.size(); ++i)
+        {
+            if(_batch.stacks[i].can_cut && _batch.stacks[i].at < _batch.stacks[i].item_ids.size())
+            {
+                Solution save_solution = _s;
+                Batch save_batch = _batch;
+
+                Item item = _batch.items[_batch.stacks[i].item_ids[_batch.stacks[i].at]];
+
+                bool prev_item_visited = false;
+
+                std::vector<Change> placements = placement_generator.get_placements(
+                    item,
+                    _batch.stacks[i].prev_item,
+                    prev_item_visited,
+                    _s.roots.back()
+                );
+
+                if(item.w != item.h)
+                {
+                    Item rotated = item;
+                    std::swap(rotated.w,rotated.h);
+
+                    prev_item_visited = false;
+
+                    std::vector<Change> rotated_placements = placement_generator.get_placements(
+                        rotated,
+                        _batch.stacks[i].prev_item,
+                        prev_item_visited,
+                        _s.roots.back()
+                    );
+
+                    placements.insert(placements.end(),rotated_placements.begin(),rotated_placements.end());
+                }
+
+                if(!placements.empty())
+                {
+                    can_place = true;
+
+                    for(const auto& change : placements)
+                    {
+                        int val = item.w*item.h;
+
+                        apply_change(_s,change);
+                        _batch.stacks[i].at++;
+                        _batch.stacks[i].prev_item = item.id;
+
+                        val += eval_filler.fill();
+
+                        if(val > max_val)
+                        {
+                            max_val = val;
+                            best_change = change;
+                            best_stack = i;
+                        }
+
+                        _s = save_solution;
+                        _batch = save_batch;
+                    }
+                }
+                else
+                {
+                    _batch.stacks[i].can_cut = false;
+                }
+            }
+        }
+
+        if(!can_place)
+        {
+            break;
+        }
+        else
+        {
+            int best_item_id = _batch.stacks[best_stack].item_ids[_batch.stacks[best_stack].at];
+            apply_change(_s,best_change);
+            _batch.stacks[best_stack].prev_item = best_item_id;
+            _batch.stacks[best_stack].at++;
+
+            value += _batch.items[best_item_id].w*_batch.items[best_item_id].h;
+
+            if(_items_placed != -1)
+            {
+                _items_placed++;
+                std::cout << _items_placed << "/" << _batch.items.size() << " items placed.\n";
+            }
+        }
     }
 
     return value;

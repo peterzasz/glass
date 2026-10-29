@@ -7,10 +7,9 @@
 class Solver
 {
     public:
-        Solver(const std::vector<Bin>& bins, const Batch& batch, const FillMethod fill_method, bool area_order) :   _bins(bins), 
-                                                                                                                    _batch(batch),
-                                                                                                                    _fill_method(fill_method),
-                                                                                                                    _area_order(area_order) {}
+        Solver(const std::vector<Bin>& bins, const Batch& batch, std::vector<FillerType>& fillers) : _bins(bins), 
+                                                                                                    _batch(batch),
+                                                                                                    _fillers(fillers) {}
 
         void solve();
 
@@ -20,8 +19,7 @@ class Solver
         std::vector<Bin> _bins;
         Batch _batch;
         Solution _s;
-        const FillMethod _fill_method;
-        bool _area_order;
+        std::vector<FillerType> _fillers;
 
         void set_waste(int node_id);
 

@@ -2,6 +2,7 @@
 #include "data.h"
 #include "cutter.h"
 #include "platefiller.h"
+#include <iostream>
 
 void Solver::set_waste(int node_id)
 {
@@ -44,8 +45,11 @@ void Solver::set_waste(int node_id)
     }
 }
 
+
 void Solver::solve()
 {
+    int items_placed = 0;
+
     for(auto& bin: _bins)
     {
         // add root node
@@ -60,10 +64,32 @@ void Solver::solve()
                     -1,
                     true
                 );
+        
+        Solution save_solution = _s;
+        Batch save_batch = _batch;
+        int max_val = -1;
+        Solution best_solution;
+        Batch best_batch;
 
-        PlateFiller filler = PlateFiller(_fill_method,_area_order,bin,_s,_batch);
+        for(const auto& filler_type : _fillers)
+        {
+            PlateFiller filler = PlateFiller(filler_type,bin,_s,_batch,items_placed);
 
-        filler.fill();
+            int val = filler.fill();
+
+            if(val > max_val)
+            {
+                max_val = val;
+                best_solution = _s;
+                best_batch = _batch;
+            }
+
+            _s = save_solution;
+            _batch = save_batch;
+        }
+
+        _s = best_solution;
+        _batch = best_batch;
 
         bool finished = true;
 
