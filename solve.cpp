@@ -67,13 +67,18 @@ void Solver::solve()
         
         Solution save_solution = _s;
         Batch save_batch = _batch;
+        int save_itemsplaced = items_placed;
+
         int max_val = -1;
         Solution best_solution;
         Batch best_batch;
+        int best_items_placed;
 
         for(const auto& filler_type : _fillers)
         {
             PlateFiller filler = PlateFiller(filler_type,bin,_s,_batch,items_placed);
+
+            std::cout << "Start filling up plate " << bin.id << " using " << filler_type << std::endl;
 
             int val = filler.fill();
 
@@ -82,14 +87,17 @@ void Solver::solve()
                 max_val = val;
                 best_solution = _s;
                 best_batch = _batch;
+                best_items_placed = items_placed;
             }
 
             _s = save_solution;
             _batch = save_batch;
+            items_placed = save_itemsplaced;
         }
 
         _s = best_solution;
         _batch = best_batch;
+        items_placed = best_items_placed;
 
         bool finished = true;
 

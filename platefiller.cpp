@@ -145,10 +145,13 @@ int PlateFiller::cutter_fill(CutMethod method)
     {
         case Ordering::AreaOrder:
             order_stack_by_area();
+            break;
         case Ordering::HeightWidth:
             order_stack_by_height_width();
+            break;
         case Ordering::WidthHeight:
             order_stack_by_width_height();
+            break;
     }
 
     NextItem next = next_item();
@@ -186,10 +189,13 @@ int PlateFiller::cutter_fill(CutMethod method)
         {
             case Ordering::AreaOrder:
                 order_stack_by_area();
+                break;
             case Ordering::HeightWidth:
                 order_stack_by_height_width();
+                break;
             case Ordering::WidthHeight:
                 order_stack_by_width_height();
+                break;
         }
 
         next = next_item();
@@ -202,22 +208,18 @@ int PlateFiller::placement_lookahead_fill(FillerType eval_method)
 {
     int value = 0;
 
-    PlacementGenerator placement_generator(_s,_bin);
-    
-    int items_placed = -1;
-    PlateFiller eval_filler = PlateFiller(eval_method,_bin,_s,_batch,items_placed);
-
-    
-
     initialize_stack_order();
     switch(_filler_type.ordering)
     {
         case Ordering::AreaOrder:
             order_stack_by_area();
+            break;
         case Ordering::HeightWidth:
             order_stack_by_height_width();
+            break;
         case Ordering::WidthHeight:
             order_stack_by_width_height();
+            break;
     }
 
     NextItem next = next_item();
@@ -226,66 +228,28 @@ int PlateFiller::placement_lookahead_fill(FillerType eval_method)
     {
         bool prev_item_visited = false;
 
+        PLCutter pl_cutter(eval_method,_s,_batch,_bin);
         Item item = _batch.items[_batch.stacks[next.stack_id].item_ids[next.sequence]];
+        int prev_item_id = _batch.stacks[next.stack_id].prev_item;
+        
+        _batch.stacks[next.stack_id].prev_item = item.id;
 
-        std::vector<Change> placements = placement_generator.get_placements(   
-            item,                                   // next item
-            _batch.stacks[next.stack_id].prev_item, // previous item id
-            prev_item_visited,                      // false
-            _s.roots.back()                         // starting node id = current root
+        bool can_cut = pl_cutter.cut(
+            item,
+            prev_item_id,
+            _s.roots.back()
         );
 
-        if(item.w != item.h)
-        {
-            Item rotated = item;
-            std::swap(rotated.w,rotated.h);
-
-            prev_item_visited = false;
-
-            std::vector<Change> rotated_placements = placement_generator.get_placements(
-                rotated,                                // next item rotated
-                _batch.stacks[next.stack_id].prev_item, // previous item id
-                prev_item_visited,                      // false
-                _s.roots.back()                         // starting node id = current root
-            );
-
-            placements.insert(placements.end(),rotated_placements.begin(),rotated_placements.end());
-        }
-
-        if(placements.empty())
+        if(!can_cut)
         {
             _batch.stacks[next.stack_id].at --;
             _batch.stacks[next.stack_id].can_cut = false;
+            _batch.stacks[next.stack_id].prev_item = prev_item_id;
         }
         else
         {
-            _batch.stacks[next.stack_id].prev_item = _batch.stacks[next.stack_id].item_ids[next.sequence];
             value += item.w*item.h;
-
-            int max_val = -1;
-            Change best_change;
-
-            Solution save_solution = _s;
-            Batch save_batch = _batch;
-
-            for(const auto& change : placements)
-            {
-                apply_change(_s,change);
-
-                int val = eval_filler.fill();
-                
-                if(val > max_val)
-                {
-                    max_val = val;
-                    best_change = change;
-                }
-
-                _s = save_solution;
-                _batch = save_batch;
-            }
-
-            apply_change(_s,best_change);
-
+            
             if(_items_placed != -1)
             {
                 _items_placed++;
@@ -293,14 +257,18 @@ int PlateFiller::placement_lookahead_fill(FillerType eval_method)
             }
         }
 
+
         switch(_filler_type.ordering)
         {
             case Ordering::AreaOrder:
                 order_stack_by_area();
+                break;
             case Ordering::HeightWidth:
                 order_stack_by_height_width();
+                break;
             case Ordering::WidthHeight:
                 order_stack_by_width_height();
+                break;
         }
 
         next = next_item();
@@ -309,109 +277,101 @@ int PlateFiller::placement_lookahead_fill(FillerType eval_method)
     return value;
 }
 
-int PlateFiller::dynamic_order_fill(FillerType eval_method)
+int PlateFiller::order_lookahead_fill(int block_size, FillerType eval_method)
 {
     int value = 0;
+    bool can_cut = true;
 
-    PlacementGenerator placement_generator(_s,_bin);
-    int items_placed = -1;
-    PlateFiller eval_filler =  PlateFiller(eval_method,_bin,_s,_batch,items_placed);
-
-    while(true)
+    while(can_cut)
     {
-        bool can_place = false;
+        Solution best_sol;
+        Batch best_batch;
+        int best_val = -1;
+        int items_val = 0;
+        cut_out(block_size,eval_method,best_sol,best_batch,best_val,items_val,0); 
 
-        int max_val = -1;
-        Change best_change;
-        int best_stack;
-
-        for(int i = 0; i < _batch.stacks.size(); ++i)
+        if(items_val == 0)
         {
-            if(_batch.stacks[i].can_cut && _batch.stacks[i].at < _batch.stacks[i].item_ids.size())
-            {
-                Solution save_solution = _s;
-                Batch save_batch = _batch;
-
-                Item item = _batch.items[_batch.stacks[i].item_ids[_batch.stacks[i].at]];
-
-                bool prev_item_visited = false;
-
-                std::vector<Change> placements = placement_generator.get_placements(
-                    item,
-                    _batch.stacks[i].prev_item,
-                    prev_item_visited,
-                    _s.roots.back()
-                );
-
-                if(item.w != item.h)
-                {
-                    Item rotated = item;
-                    std::swap(rotated.w,rotated.h);
-
-                    prev_item_visited = false;
-
-                    std::vector<Change> rotated_placements = placement_generator.get_placements(
-                        rotated,
-                        _batch.stacks[i].prev_item,
-                        prev_item_visited,
-                        _s.roots.back()
-                    );
-
-                    placements.insert(placements.end(),rotated_placements.begin(),rotated_placements.end());
-                }
-
-                if(!placements.empty())
-                {
-                    can_place = true;
-
-                    for(const auto& change : placements)
-                    {
-                        int val = item.w*item.h;
-
-                        apply_change(_s,change);
-                        _batch.stacks[i].at++;
-                        _batch.stacks[i].prev_item = item.id;
-
-                        val += eval_filler.fill();
-
-                        if(val > max_val)
-                        {
-                            max_val = val;
-                            best_change = change;
-                            best_stack = i;
-                        }
-
-                        _s = save_solution;
-                        _batch = save_batch;
-                    }
-                }
-                else
-                {
-                    _batch.stacks[i].can_cut = false;
-                }
-            }
-        }
-
-        if(!can_place)
-        {
-            break;
+            can_cut = false;
         }
         else
         {
-            int best_item_id = _batch.stacks[best_stack].item_ids[_batch.stacks[best_stack].at];
-            apply_change(_s,best_change);
-            _batch.stacks[best_stack].prev_item = best_item_id;
-            _batch.stacks[best_stack].at++;
+            value += items_val;
+            _s = best_sol;
+            _batch = best_batch;
 
-            value += _batch.items[best_item_id].w*_batch.items[best_item_id].h;
-
-            if(_items_placed != -1)
-            {
-                _items_placed++;
-                std::cout << _items_placed << "/" << _batch.items.size() << " items placed.\n";
-            }
+            std::cout << "Some items are placed.\n";
         }
     }
 
     return value;
 }
+
+void PlateFiller::cut_out(int block_size, FillerType eval_method, Solution& best_sol, Batch& best_batch, int& best_val, int& items_val, int val)
+{
+    if(block_size == 0)
+    {
+        if(val == 0)
+        {
+            return; 
+        }
+
+        int items_placed = -1;
+        PlateFiller eval_filler(eval_method,_bin,_s,_batch,items_placed);
+
+        Solution save_sol = _s;
+        Batch save_batch = _batch;
+
+        int value = val + eval_filler.fill();
+
+        _s = save_sol;
+        _batch = save_batch;
+
+        if(value > best_val)
+        {
+            best_sol = _s;
+            best_batch = _batch;
+            best_val = value;
+            items_val = val;
+        }
+    }
+    else
+    {
+        bool there_is_avaiable = false;
+
+        for(int i = 0; i < _batch.stacks.size(); ++i)
+        {
+            if(_batch.stacks[i].can_cut && _batch.stacks[i].at < _batch.stacks[i].item_ids.size())
+            {
+                Solution save_sol = _s;
+                Batch save_batch = _batch;
+
+                Item item = _batch.items[_batch.stacks[i].item_ids[_batch.stacks[i].at]];
+                PLCutter cutter(eval_method,_s,_batch,_bin);
+
+                int prev_item_id = _batch.stacks[i].prev_item;
+
+                _batch.stacks[i].prev_item = item.id;
+                _batch.stacks[i].at++;
+
+                bool can_cut = cutter.cut(item,prev_item_id,_s.roots.back());
+
+                if(can_cut)
+                {
+                    cut_out(block_size-1,eval_method,best_sol,best_batch,best_val,items_val,val+item.h*item.w);
+                    there_is_avaiable = true;
+                }
+
+                _s = save_sol;
+                _batch = save_batch;
+            }
+        }
+
+        if(!there_is_avaiable)
+        {
+            cut_out(0,eval_method,best_sol,best_batch,best_val,items_val,val);
+        }
+    }
+}
+
+

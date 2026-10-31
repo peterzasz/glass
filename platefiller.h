@@ -3,29 +3,7 @@
 
 #include "data.h"
 #include "cutter.h"
-
-enum class FillMethod
-{
-    NoRotation,
-    Rotation,
-    PlacementLookahead,
-    PlacementLookahead2,
-    OrderLookahead
-};
-
-enum class Ordering
-{
-    NoOrder,
-    AreaOrder,
-    WidthHeight,
-    HeightWidth
-};
-
-struct FillerType
-{
-    Ordering ordering;
-    FillMethod method;
-};
+#include "fillertypes.h"
 
 class PlateFiller
 {
@@ -49,7 +27,7 @@ class PlateFiller
                 case FillMethod::PlacementLookahead2:
                     return placement_lookahead_fill({Ordering::AreaOrder,FillMethod::PlacementLookahead});
                 case FillMethod::OrderLookahead:
-                    return dynamic_order_fill({Ordering::AreaOrder,FillMethod::PlacementLookahead});
+                    return order_lookahead_fill(4,{Ordering::AreaOrder,FillMethod::PlacementLookahead});
             }
 
             return 0;
@@ -63,10 +41,10 @@ class PlateFiller
         int& _items_placed;
 
         int cutter_fill(CutMethod cut_method);
-
         int placement_lookahead_fill(FillerType evaluation_method);
 
-        int dynamic_order_fill(FillerType evaluation_method);
+        int order_lookahead_fill(int block_size, FillerType eval_method);
+        void cut_out(int block_size, FillerType eval_method, Solution& _best_sol, Batch& _best_batch, int& best_val, int& items_val, int val);
 
 
         NextItem next_item();

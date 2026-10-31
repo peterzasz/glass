@@ -2,13 +2,9 @@
 #define CUTTER_H
 
 #include "data.h"
+#include "platefiller.h"
+#include "fillertypes.h"
 #include <vector>
-
-enum class CutMethod
-{
-    NoRotation,
-    Rotation
-};
 
 class CutGeometry
 {
@@ -166,5 +162,19 @@ class PlacementGenerator : private CutGeometry
 };
 
 void apply_change(Solution& s, const Change& c);
+
+class PLCutter
+{
+    public:
+        PLCutter(FillerType eval_method, Solution& s, Batch& batch, const Bin& bin) : _eval_method(eval_method), _s(s), _batch(batch), _bin(bin) {}
+
+        bool cut(Item& item, int prev_item_id, int node_id);
+
+    private:
+        FillerType _eval_method;
+        Solution& _s;
+        Batch& _batch;
+        const Bin& _bin;
+};
 
 #endif

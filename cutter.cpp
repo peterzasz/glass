@@ -1666,3 +1666,70 @@ void apply_change(Solution& s, const Change& c)
         s.nodes[node_change.node_id] = node_change.node;
     }
 }
+
+bool PLCutter::cut(Item& item, int prev_item_id, int node_id)
+{
+    PlacementGenerator placement_generator(_s,_bin);
+
+    bool prev_item_visited = false;
+
+    std::vector<Change> placements = placement_generator.get_placements(   
+        item,                                   // next item
+        prev_item_id,                           // previous item id
+        prev_item_visited,                      // false
+        node_id                                 // starting node id = current root
+    );
+
+    if(item.w != item.h)
+    {
+        Item rotated = item;
+        std::swap(rotated.w,rotated.h);
+
+        prev_item_visited = false;
+
+        std::vector<Change> rotated_placements = placement_generator.get_placements(
+            rotated,                                // next item rotated
+            prev_item_id,                           // previous item id
+            prev_item_visited,                      // false
+            node_id                                 // starting node id = current root
+        );
+
+        placements.insert(placements.end(),rotated_placements.begin(),rotated_placements.end());
+    }
+
+    if(placements.empty())
+    {
+        return false;
+    }
+    else
+    {
+        int items_placed = -1;
+        PlateFiller eval_filler(_eval_method,_bin,_s,_batch,items_placed);
+
+        int max_val = -1;
+        Change best_change;
+
+        Solution save_solution = _s;
+        Batch save_batch = _batch;
+
+        for(const auto& change : placements)
+        {
+            apply_change(_s,change);
+
+            int val = eval_filler.fill();
+            
+            if(val > max_val)
+            {
+                max_val = val;
+                best_change = change;
+            }
+
+            _s = save_solution;
+            _batch = save_batch;
+        }
+
+        apply_change(_s,best_change);
+
+        return true;
+    }
+}

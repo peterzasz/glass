@@ -56,13 +56,13 @@ int main(int argc,char **argv)
         {
             method = FillMethod::PlacementLookahead;
         }
-        else if(method_code == "OL")
-        {
-            method = FillMethod::OrderLookahead;
-        }
         else if(method_code == "PL2")
         {
             method = FillMethod::PlacementLookahead2;
+        }
+        else if(method_code == "OL")
+        {
+            method = FillMethod::OrderLookahead;
         }
         else
         {
