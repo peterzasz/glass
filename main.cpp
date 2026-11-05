@@ -11,7 +11,7 @@
 /*
 * arguments:
 *   dataset: A,B,X followed by id
-*   solver type: F, R, PL, PL2, OL
+*   solver type: F, R, PL, PL2, OL or plates number lower bound: PNLB followed by statistics output path
 *   ordering: NO, DA, WH, HW, ALL
 *   statistics output path
 */ 
@@ -29,11 +29,31 @@ int main(int argc,char **argv)
     }
     else if(argc == 3)
     {
+
         std::cout << "Argument needed: ordering and statistics output path";
         return 1;
     }
     else if(argc == 4)
     {
+        if(std::string(argv[2]) == "PNLB") // calculate plates number lower bound
+        {
+            std::string dataset = argv[1];
+            std::string statistics_path = argv[3];
+
+            std::stringstream ss;
+            std::string batch_path;
+            std::string defects_path;
+
+            ss << "dataset_" << dataset[0] << "/" << dataset << "_batch.csv";
+            ss >> batch_path;
+
+            Batch batch = read_batch(batch_path);
+
+            plate_number_lower_bound(batch,6000*3210,statistics_path,dataset);
+
+            return 0;
+        }
+
         std::cout << "Argument needed: statistics output path";
         return 1;
     }
@@ -131,8 +151,6 @@ int main(int argc,char **argv)
 
         std::string statistics_path = argv[4];
 
-        std::cout << "Starting on dataset " << dataset << " with algorithm " << method_code << " with ordering set to " << ordering_code << std::endl;
-
         std::stringstream ss;
         std::string batch_path;
         std::string defects_path;
@@ -148,6 +166,7 @@ int main(int argc,char **argv)
 
         Solver solver(bins,batch,fillers);
 
+        std::cout << "Starting on dataset " << dataset << " with algorithm " << method_code << " with ordering set to " << ordering_code << std::endl;
 
         auto start = std::chrono::high_resolution_clock::now();
 

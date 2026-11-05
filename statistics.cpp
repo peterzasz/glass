@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <string>
+#include <cmath>
 
 void create_statistics_file(
     const Solution& s,
@@ -52,4 +53,46 @@ void create_statistics_file(
     double totalGeoLoss = (1 - static_cast<double>(totalItemsArea)/totalPlatesArea)*100;
 
     file << dataset << ";" << 1 << ";" << nPlates << ";" << totalGeoLoss << "%" << ";" << widthResidual << ";" << seconds << " s";
+}
+
+void plate_number_lower_bound(
+    const Batch& batch,
+    int bin_area,
+    const std::string& path,
+    const std::string& dataset
+)
+{
+    std::filesystem::create_directories(path);
+
+    std::ofstream file(
+        path + "/" + dataset + "_statistics.csv"
+    );
+
+    if(!file)
+    {
+        return;
+    }
+
+    file << "instanceId;validSolution;nPlates;"
+            "totalGeoLoss;widthResidual;runTime\n";
+
+    long long totalItemArea = 0;
+
+    for(const auto& item : batch.items)
+    {
+        totalItemArea +=
+            static_cast<long long>(item.w) * item.h;
+    }
+
+    int nPlates = static_cast<int>(
+        (totalItemArea + bin_area - 1) / bin_area
+    );
+
+    file << dataset
+         << ";" << -1
+         << ";" << nPlates
+         << ";" << -1
+         << ";" << -1
+         << ";" << -1
+         << "\n";
 }

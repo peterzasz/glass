@@ -27,7 +27,7 @@ class PlateFiller
                 case FillMethod::PlacementLookahead2:
                     return placement_lookahead_fill({Ordering::AreaOrder,FillMethod::PlacementLookahead});
                 case FillMethod::OrderLookahead:
-                    return order_lookahead_fill(4,{Ordering::AreaOrder,FillMethod::PlacementLookahead});
+                    return order_lookahead_fill(1,{Ordering::AreaOrder,FillMethod::PlacementLookahead});
             }
 
             return 0;
