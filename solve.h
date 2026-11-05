@@ -22,8 +22,6 @@ class Solver
         std::vector<FillerType> _fillers;
 
         void set_waste(int node_id);
-
-        NextItem next_item();
 };
 
 #endif
